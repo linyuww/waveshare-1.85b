@@ -3,9 +3,14 @@ from pathlib import Path
 import hashlib
 import json
 import struct
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
-DIST = ROOT / "dist"
+parser = argparse.ArgumentParser()
+parser.add_argument("--dist", type=Path, default=ROOT / "dist")
+parser.add_argument("--build", type=Path, default=ROOT / "firmware/build")
+arguments = parser.parse_args()
+DIST = arguments.dist
 merged = (DIST / "waveshare-launcher-usb.bin").read_bytes()
 for name, offset in (("bootloader.bin", 0), ("partition-table.bin", 0x8000), ("waveshare_launcher.bin", 0x10000)):
     data = (DIST / name).read_bytes()
@@ -14,7 +19,7 @@ for name, offset in (("bootloader.bin", 0), ("partition-table.bin", 0x8000), ("w
 app = (DIST / "waveshare_launcher.bin").read_bytes()
 assert app[0] == 0xE9 and struct.unpack_from("<I", app, 0x20)[0] == 0xABCD5432
 version = app[0x30:0x50].split(b"\0", 1)[0].decode()
-description = json.loads((ROOT / "firmware/build/project_description.json").read_text())
+description = json.loads((arguments.build / "project_description.json").read_text())
 assert version == description["project_version"], "Exported app version is stale"
 assert len(app) < 0x800000, "Application exceeds the 8 MiB partition"
 assert len(merged) < 0x810000

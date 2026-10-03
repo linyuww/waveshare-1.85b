@@ -1,6 +1,6 @@
 # Waveshare 1.85B 应用桌面
 
-为原版 ESP32-S3-Touch-LCD-1.85B 制作的应用固件：开机画面 → Brookesia 应用桌面 → 设置、时钟、网络测试、设备信息、Codex Micro。
+为原版 ESP32-S3-Touch-LCD-1.85B 制作的应用固件：开机画面 → Brookesia 应用桌面 → 设置、时钟、网络测试、设备信息、Codex Micro、健身。
 
 构建使用 ESP-IDF 5.5.3，输出见 `dist/`；构建版本与 USB 实机验证结果见 [docs/VALIDATION.md](docs/VALIDATION.md)。触摸操作、配网与电脑控制仍需逐项验收。
 
@@ -51,6 +51,10 @@
 - `sha256.json`：固件校验值。
 
 遇到缓存问题可以运行 `./scripts/build.ps1 -Clean`。`firmware/sdkconfig.defaults` 和 `dependencies.lock` 用于复现配置及组件版本。
+
+## 健身应用（0.3.0）
+
+桌面第二页新增「健身」：完整周计划、14 个离线循环动作示意、点击记组、组间休息和最近 30 次训练。设置可调整每动作目标和周计划模板，退出桌面保留训练，重启后恢复进度。详细操作和资源生成见 [docs/FITNESS.md](docs/FITNESS.md)，交付范围、测试结果及未完成的实机验收见 [docs/FITNESS-VALIDATION.md](docs/FITNESS-VALIDATION.md)。
 
 ## USB 烧录
 

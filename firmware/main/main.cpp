@@ -6,6 +6,7 @@
 #include "bluetooth_service.hpp"
 #include "codex_micro_app.hpp"
 #include "system_service.hpp"
+#include "fitness_app.hpp"
 #include "ui_assets.h"
 #include "dark/stylesheet.hpp"
 #include <ctime>
@@ -68,6 +69,11 @@ void startDesktop(lv_timer_t *timer)
     if (phone->installApp(codex_app) < esp_brookesia::systems::base::App::APP_ID_MIN) {
         ESP_LOGE(TAG, "Codex Micro installation failed");
         delete codex_app;
+    }
+    auto *fitness_app = new FitnessApp();
+    if (phone->installApp(fitness_app) < esp_brookesia::systems::base::App::APP_ID_MIN) {
+        ESP_LOGE(TAG, "Fitness installation failed");
+        delete fitness_app;
     }
     // Hide the unimplemented battery gauge instead of displaying an invented charge level.
     phone->getDisplay().getStatusBar()->hideBatteryIcon();

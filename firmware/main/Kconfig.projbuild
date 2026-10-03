@@ -1,0 +1,6 @@
+config FITNESS_APP_GIF
+    bool
+    default y
+    select LV_USE_GIF
+    help
+        The offline fitness app requires the LVGL GIF widget and decoder.

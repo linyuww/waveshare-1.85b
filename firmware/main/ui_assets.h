@@ -9,6 +9,7 @@ LV_IMAGE_DECLARE(icon_clock);
 LV_IMAGE_DECLARE(icon_network);
 LV_IMAGE_DECLARE(icon_about);
 LV_IMAGE_DECLARE(icon_codex);
+LV_IMAGE_DECLARE(icon_fitness);
 #ifdef __cplusplus
 }
 #endif
