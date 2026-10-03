@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <cassert>
+#define ESP_ERROR_CHECK(call) assert((call) == ESP_OK)
 #include <cstring>
 using esp_err_t = int;
 constexpr int ESP_OK = 0;

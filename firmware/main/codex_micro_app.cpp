@@ -82,7 +82,8 @@ void CodexMicroApp::restoreBrightness()
 void CodexMicroApp::releaseControls()
 {
     if (!BluetoothService::instance().releaseControls()) ESP_LOGW(TAG, "Control release queue full");
-    tracking_ = send_ = power_hold_ = mic_ = false;
+    tracking_ = send_ = power_hold_ = false;
+    boot_.reset(gpio_get_level(GPIO_NUM_0) == 0, nowMs());
     direction_ = touch_gesture::Direction::None;
     agent_ = -1;
 }
@@ -90,6 +91,7 @@ void CodexMicroApp::releaseControls()
 bool CodexMicroApp::back() { return notifyCoreClosed(); }
 bool CodexMicroApp::pause()
 {
+    if (!active_) return true;
     active_ = false;
     if (timer_) lv_timer_pause(timer_);
     releaseControls();
@@ -102,10 +104,8 @@ bool CodexMicroApp::resume()
     if (!timer_) return true;
     active_ = true;
     sleeping_ = consume_touch_ = false;
-    button_raw_ = button_stable_ = gpio_get_level(GPIO_NUM_0) == 0;
-    // A BOOT hold started in another app must be released before voice control.
-    button_armed_ = !button_raw_;
-    button_change_at_ = activity_at_ = nowMs();
+    activity_at_ = nowMs();
+    boot_.reset(gpio_get_level(GPIO_NUM_0) == 0, activity_at_);
     voice_until_ = 0;
     revision_ = UINT32_MAX;
     restoreBrightness();
@@ -116,6 +116,7 @@ bool CodexMicroApp::resume()
 bool CodexMicroApp::close()
 {
     pause();
+    if (timer_) lv_timer_delete(timer_);
     root_ = image_ = nullptr;
     timer_ = nullptr;
     return true;
@@ -137,7 +138,7 @@ bool CodexMicroApp::wake()
 void CodexMicroApp::onTouch(lv_event_t *event)
 {
     auto *self = static_cast<CodexMicroApp *>(lv_event_get_user_data(event));
-    if (!self->active_ || lv_event_get_target_obj(event) != self->root_) return;
+    if (!self->active_ || self->root_ != lv_screen_active() || lv_event_get_target_obj(event) != self->root_) return;
     lv_point_t point = {};
     if (auto *input = lv_indev_active()) lv_indev_get_point(input, &point);
     switch (lv_event_get_code(event)) {
@@ -205,34 +206,24 @@ void CodexMicroApp::release()
 void CodexMicroApp::updateButton()
 {
     const uint32_t now = nowMs();
-    const bool raw = gpio_get_level(GPIO_NUM_0) == 0;
-    if (raw != button_raw_) { button_raw_ = raw; button_change_at_ = now; }
-    if (now - button_change_at_ >= 30 && button_stable_ != raw) {
-        button_stable_ = raw;
-        if (raw && button_armed_) { wake(); button_at_ = now; }
-        else if (!raw) {
-            if (button_armed_) {
-                if (mic_) { BluetoothService::instance().holdMic(false); mic_ = false; }
-                else if (now - button_at_ < 700) {
-                    BluetoothService::instance().pulse(BluetoothService::Key::Voice);
-                    voice_until_ = now + 900;
-                }
-            }
-            button_armed_ = true;
-        }
-    }
-    if (button_stable_ && button_armed_ && !mic_ && now - button_at_ >= 700) {
-        BluetoothService::instance().holdMic(true);
-        mic_ = true;
-    }
+    const bool pulsed = boot_.update(gpio_get_level(GPIO_NUM_0) == 0, now,
+        [this] { wake(); },
+        [](bool pressed) {
+            const bool accepted = BluetoothService::instance().holdMic(pressed);
+            if (!pressed && !accepted) BluetoothService::instance().releaseControls();
+            return accepted;
+        },
+        [] { return BluetoothService::instance().pulse(BluetoothService::Key::Voice); });
+    if (pulsed) voice_until_ = now + 900;
 }
 
 void CodexMicroApp::tick()
 {
     if (!active_) return;
+    if (!root_ || root_ != lv_screen_active()) { pause(); return; }
     updateButton();
     const uint32_t now = nowMs();
-    if (tracking_ || button_stable_) activity_at_ = now;
+    if (tracking_ || boot_.pressed()) activity_at_ = now;
     if (tracking_ && send_ && direction_ == touch_gesture::Direction::None && now - touch_at_ >= 2000) power_hold_ = true;
     if (power_hold_ && now - touch_at_ >= 6000) {
         releaseControls();
@@ -252,7 +243,7 @@ void CodexMicroApp::tick()
         if (brightness_ != dimmed) { bsp_display_brightness_set(dimmed); brightness_ = dimmed; }
     }
     if (sleeping_ && status.completion_at && now - status.completion_at < 1000) wake();
-    if (!sleeping_ && (status.revision != revision_ || now - rendered_at_ >= 1000 || mic_ || voice_until_ || power_hold_)) render();
+    if (!sleeping_ && (status.revision != revision_ || now - rendered_at_ >= 1000 || boot_.mic() || voice_until_ || power_hold_)) render();
 }
 
 void CodexMicroApp::render()
@@ -289,7 +280,7 @@ void CodexMicroApp::render()
         night_ = theme::isNight(local.tm_hour);
     }
     ui.night = night_;
-    ui.micPressed = mic_;
+    ui.micPressed = boot_.mic();
     if (voice_until_ && expired(now, voice_until_)) voice_until_ = 0;
     ui.voicePressed = voice_until_ != 0;
     ui.sendPressed = send_ && !power_hold_;

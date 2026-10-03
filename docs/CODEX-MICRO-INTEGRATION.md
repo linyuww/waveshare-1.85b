@@ -6,7 +6,9 @@
 
 导入自用户指定的 `codex-micro-1.85b` 本地项目，Git HEAD 为 `76018f792796322d25b62fd86db1a9a84d8327b7`。导入时的文件哈希见 `codex-micro-source.json`。该项目源自 [digitsisyph/codex-micro-stopwatch](https://github.com/digitsisyph/codex-micro-stopwatch)，导入文件保留原作者信息与 MIT SPDX 许可。
 
-保留像素日夜背景、六个智能体按钮、Send、四向手势、额度显示及缓存、BLE HID/RPC 和额度 GATT 协议。BOOT 短按发送 Voice Chat，按住 0.7 秒发送语音输入意图，松开停止；按键仅在 Codex Micro 应用前台时生效。这些操作由电脑端执行，开发板不在本地录制或传输音频。
+保留像素日夜背景、六个智能体按钮、Send、四向手势、额度显示及缓存、BLE HID/RPC 和额度 GATT 协议。BOOT 短按发送 Voice Chat，按住 0.7 秒发送语音输入意图，松开停止；按键仅在 Codex Micro 应用前台时生效。进入时已按住 BOOT 必须先松开再按下。离开界面释放已按下的控制，不产生额外短按；释放入队失败时走现有可靠释放通道。
+
+这些操作由电脑端执行，开发板不在本地录制或传输音频。
 
 电量读取使用原项目 BQ27220 逻辑，读取失败时显示未知值。完成提示音继续使用原项目 ES8311/I²S 实现，独立任务播放以避免阻塞 UI 和 BLE 消息处理。
 
