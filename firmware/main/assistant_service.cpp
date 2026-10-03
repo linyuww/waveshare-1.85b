@@ -92,6 +92,19 @@ bool AssistantService::start() { return enqueue(Action::Start); }
 bool AssistantService::stop() { return enqueue(Action::Stop); }
 bool AssistantService::listen() { return enqueue(Action::Listen); }
 bool AssistantService::finishListening() { return enqueue(Action::Finish); }
+uint32_t AssistantService::beginBootListening()
+{
+    const uint32_t session = boot_recording_.next();
+    Command command{Action::BootListen, 0, session};
+    return commands_ && xQueueSend(commands_, &command, 0) == pdTRUE ? session : 0;
+}
+void AssistantService::finishBootListening(uint32_t session) { boot_recording_.finish(session); }
+void AssistantService::finishBootRecording()
+{
+    if (!hello_ || !boot_recording_.takeFinish()) return;
+    if (!sendListen("stop")) receive_failed_ = true;
+    listening_ = false;
+}
 bool AssistantService::setVolume(int percent) { return percent >= 0 && percent <= 100 && enqueue(Action::Volume, percent); }
 bool AssistantService::saveConfig(const Config &value)
 {
@@ -238,6 +251,7 @@ esp_err_t AssistantService::connect()
 
 void AssistantService::disconnect()
 {
+    boot_recording_.cancel();
     if (socket_) {
         esp_websocket_client_stop(socket_);
         esp_websocket_client_destroy(socket_);
@@ -452,6 +466,7 @@ void AssistantService::worker()
     if (console_result != ESP_OK) ESP_LOGW(TAG, "USB diagnostics unavailable: %s", esp_err_to_name(console_result));
     while (true) {
         assistant_console::poll();
+        finishBootRecording();
         Command command;
         if (xQueueReceive(commands_, &command, pdMS_TO_TICKS(10)) == pdTRUE) {
             if (command.action == Action::Start) {
@@ -462,7 +477,9 @@ void AssistantService::worker()
             } else if (command.action == Action::Stop) {
                 disconnect();
                 setMessage("小智已停止，音乐和 Codex 提示音不受影响");
-            } else if (command.action == Action::Listen) {
+            } else if (command.action == Action::Listen || command.action == Action::BootListen) {
+                boot_recording_.cancel();
+                if (command.action == Action::BootListen && !boot_recording_.claim(command.boot_session)) continue;
                 if (hello_) {
                     auto *abort = cJSON_CreateObject();
                     cJSON_AddStringToObject(abort, "type", "abort");
@@ -471,12 +488,15 @@ void AssistantService::worker()
                     speaking_ = false;
                     shared_audio::prioritize(shared_audio::Source::Assistant, false);
                     listening_ = sendListen("start");
+                    if (!listening_) receive_failed_ = true;
                 } else {
                     disconnect();
                     receive_failed_ = false;
                     connect();
+                    if (command.action == Action::BootListen) boot_recording_.restore(command.boot_session);
                 }
             } else if (command.action == Action::Finish) {
+                boot_recording_.cancel();
                 if (hello_) sendListen("stop");
                 listening_ = false;
             } else if (command.action == Action::Save) {
@@ -517,6 +537,7 @@ void AssistantService::worker()
             disconnect();
             setMessage("语音连接已断开，请点击开始重连");
         }
+        finishBootRecording();
         capture();
         { Lock lock(mutex_); status_.listening = listening_; status_.speaking = speaking_; }
     }

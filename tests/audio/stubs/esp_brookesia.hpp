@@ -8,6 +8,9 @@ public:
     virtual bool run() = 0;
     virtual bool back() = 0;
     virtual bool close() = 0;
+    virtual bool pause() { return true; }
+    virtual bool resume() { return true; }
+    virtual bool cleanResource() { return true; }
 protected:
     bool notifyCoreClosed() { return true; }
 };

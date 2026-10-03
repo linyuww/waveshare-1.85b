@@ -26,3 +26,14 @@ target_include_directories(audio_preview PRIVATE ${ROOT}/tests/audio/stubs ${ROO
     ${ROOT}/firmware/components/shared_audio /opt/esp/idf/components/json/cJSON)
 target_link_libraries(audio_preview PRIVATE lvgl m)
 target_compile_options(audio_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+foreach(theme day night)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bg_${theme}.o
+        COMMAND ${CMAKE_LINKER} -r -b binary bg_${theme}.bin -o ${CMAKE_CURRENT_BINARY_DIR}/bg_${theme}.o
+        WORKING_DIRECTORY ${ROOT}/firmware/components/codex_micro/assets
+        DEPENDS ${ROOT}/firmware/components/codex_micro/assets/bg_${theme}.bin)
+    target_sources(audio_preview PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/bg_${theme}.o)
+endforeach()
+target_sources(audio_preview PRIVATE ${ROOT}/firmware/main/codex_micro_app.cpp
+    ${ROOT}/firmware/components/codex_micro/gfx.cpp)
+target_include_directories(audio_preview PRIVATE ${ROOT}/firmware/components/codex_micro ${ROOT}/tests/stubs)
+target_link_options(audio_preview PRIVATE -Wl,-z,noexecstack)

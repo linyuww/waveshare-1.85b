@@ -32,6 +32,8 @@ API key、secret key 和随机令牌只保存在本机忽略目录；设备 NVS 
 
 「开始对话」启用服务端自动结束语句模式。也可在小智页面按 BOOT 开始说话，松开结束，或点击「打断并聆听」「说完了」。「停止小智」终止语音连接，不影响音乐和 Codex 提示音。
 
+BOOT 仅在小智助手处于前台且当前屏幕属于该应用时处理，采用 30 毫秒消抖。按住 BOOT 进入或恢复页面时，必须先松开再重新按下。离开页面会结束本次 BOOT 操作启动的录音，暂停后再关闭不会重复发送结束；不会结束由其他按钮或后台操作接管的会话。开始请求入队失败不会记录为正在按住；结束请求通过独立会话标记交给服务任务处理，不受普通操作队列满的影响。蓝牙和小智消息格式保持原样。
+
 设置和稳定的 Client-Id 存于设备的 `voice_apps` NVS 命名空间；Wi-Fi 凭据仍由原有共享服务保存。屏幕中的令牌输入是密码框，状态查询不会返回令牌。NVS 当前没有加密；不要把设备共享给不信任的人。
 
 ## 用户指定的音频与页面行为
@@ -134,10 +136,10 @@ python scripts/verify_artifacts.py --dist dist/assistant --build .cache/assistan
 
 ```powershell
 New-Item -ItemType Directory .cache/assistant-preview -Force
-docker run --rm --mount "type=bind,source=${PWD},target=/work" --mount 'type=volume,source=waveshare-audio-ui-preview,target=/preview-build' espressif/idf:v5.5.3 bash -c 'cmake -S /work/tests/ui_preview -B /preview-build -DCMAKE_BUILD_TYPE=Debug && cmake --build /preview-build --target audio_preview -j 8 && /preview-build/audio_preview /work/.cache/assistant-preview'
+docker run --rm --mount "type=bind,source=${PWD},target=/work" --mount 'type=volume,source=waveshare-assistant-components,target=/work/firmware/managed_components' --mount 'type=volume,source=waveshare-boot-ui-preview,target=/preview-build' espressif/idf:v5.5.3 bash -c 'cmake -S /work/tests/ui_preview -B /preview-build -DCMAKE_BUILD_TYPE=Debug && cmake --build /preview-build --target audio_preview -j 8 && /preview-build/audio_preview /work/.cache/assistant-preview'
 ```
 
-该测试使用真实 LVGL 与生产 `audio_apps.cpp`、模拟服务，覆盖开始对话、BOOT 按下/松开、暂停按钮发出返回请求、设置保存与 100 次页面创建/关闭。生成的 PPM 预览不会证明实际云端语音识别或 Brookesia 页面切换已成功。
+该测试使用真实 LVGL 与生产 `audio_apps.cpp`、`codex_micro_app.cpp`，模拟 GPIO、时间和服务，覆盖两应用独立响应、后台不响应、按住跨页面切换、进入时先松开、700 毫秒长按、队列拒绝与释放兜底、暂停后关闭不重复发送，以及 100 次页面创建/关闭。音频单元测试还覆盖消抖、时间回绕、录音归属及连接期间松开。生成的 PPM 预览不会证明实际云端语音识别或 Brookesia 页面切换已成功。
 
 2026-10-03 已在 COM5 实测耀狐网易点歌：签名请求返回歌曲元数据，FFmpeg 输出非静音的 16 kHz 单声道 PCM；设备 `/resolve` 与 `/stream` 均返回 HTTP 200，播放状态累计到 13.5 秒，暂停后返回小智并保持语音上传。桥接服务允许最长 30 分钟连接，避免长时间暂停被短连接超时截断。
 
