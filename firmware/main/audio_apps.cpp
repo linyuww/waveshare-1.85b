@@ -107,23 +107,57 @@ bool AudioApp::run()
     const auto shell = createLauncherAppShell(root_, "小智助手");
     lv_obj_add_event_cb(shell.home, onHome, LV_EVENT_CLICKED, this);
     lv_obj_remove_flag(shell.body, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_row(shell.body, 6, 0);
+    lv_obj_set_style_pad_row(shell.body, 8, 0);
     lv_obj_set_style_text_align(shell.body, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_flex_align(shell.body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    status_ = label(shell.body, "正在连接");
-    lv_obj_set_height(status_, 24);
-    lv_label_set_long_mode(status_, LV_LABEL_LONG_DOT);
-    auto *avatar = lv_image_create(shell.body);
+    auto *header = lv_obj_create(shell.body);
+    lv_obj_set_size(header, LV_PCT(100), 80);
+    lv_obj_set_style_pad_all(header, 0, 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(header, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(header, 12, 0);
+    auto *avatar = lv_image_create(header);
     lv_image_set_src(avatar, &icon_assistant);
     lv_obj_add_flag(avatar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(avatar, onToggle, LV_EVENT_CLICKED, this);
+    auto *details = lv_obj_create(header);
+    lv_obj_set_size(details, 148, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(details, 0, 0);
+    lv_obj_set_style_border_width(details, 0, 0);
+    lv_obj_set_style_bg_opa(details, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(details, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(details, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(details, 8, 0);
+    status_ = label(details, "正在连接");
+    lv_obj_set_height(status_, 48);
+    lv_label_set_long_mode(status_, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_color(status_, lv_color_hex(0xAAB9CB), 0);
+    auto *toggle_hint = label(details, "点头像切换");
+    lv_obj_set_style_text_color(toggle_hint, lv_color_hex(0xAAB9CB), 0);
     activation_ = label(shell.body, "");
     lv_obj_add_flag(activation_, LV_OBJ_FLAG_HIDDEN);
-    transcript_ = label(shell.body, "");
-    lv_obj_set_height(transcript_, 0);
-    lv_obj_set_flex_grow(transcript_, 1);
-    lv_label_set_long_mode(transcript_, LV_LABEL_LONG_DOT);
-    hint_ = label(shell.body, "点头像切换 / BOOT 按住说话");
+    conversation_ = lv_obj_create(shell.body);
+    lv_obj_set_width(conversation_, LV_PCT(100));
+    lv_obj_set_height(conversation_, 0);
+    lv_obj_set_flex_grow(conversation_, 1);
+    lv_obj_set_style_bg_color(conversation_, lv_color_hex(0x1B293B), 0);
+    lv_obj_set_style_text_color(conversation_, lv_color_hex(0xF1F5FA), 0);
+    lv_obj_set_style_text_font(conversation_, &ui_font, 0);
+    lv_obj_set_style_radius(conversation_, 16, 0);
+    lv_obj_set_style_border_width(conversation_, 0, 0);
+    lv_obj_set_style_pad_all(conversation_, 10, 0);
+    lv_obj_set_style_pad_row(conversation_, 4, 0);
+    lv_obj_set_flex_flow(conversation_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scroll_dir(conversation_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(conversation_, LV_SCROLLBAR_MODE_AUTO);
+    speaker_ = label(conversation_, "小智");
+    lv_obj_set_style_text_color(speaker_, lv_color_hex(0xBAA5FF), 0);
+    transcript_ = label(conversation_, "");
+    lv_label_set_long_mode(transcript_, LV_LABEL_LONG_WRAP);
+    hint_ = label(shell.body, "按住 BOOT 说话，松开发送");
     lv_obj_set_style_text_color(hint_, lv_color_hex(0xAAB9CB), 0);
     gpio_config_t button_config = {};
     button_config.pin_bit_mask = 1ULL << GPIO_NUM_0;
@@ -160,7 +194,7 @@ bool AudioApp::close()
     if (root_) lv_obj_remove_event_cb_with_user_data(root_, onRootDeleted, this);
     if (timer_) lv_timer_delete(timer_);
     timer_ = nullptr;
-    root_ = status_ = transcript_ = activation_ = hint_ = nullptr;
+    root_ = status_ = transcript_ = conversation_ = speaker_ = activation_ = hint_ = nullptr;
     return true;
 }
 void AudioApp::onRootDeleted(lv_event_t *event)
@@ -200,15 +234,26 @@ void AudioApp::refresh()
 {
     const auto assistant = AssistantService::instance().snapshot();
     updateLabel(status_, assistant.speaking ? "正在说话" : assistant.listening ? "正在聆听" : assistant.message);
+    const uint32_t color = assistant.speaking ? 0xBAA5FF : assistant.listening ? 0x71DFBF : 0xAAB9CB;
+    if (lv_color_to_u32(lv_obj_get_style_text_color(status_, LV_PART_MAIN)) != lv_color_to_u32(lv_color_hex(color)))
+        lv_obj_set_style_text_color(status_, lv_color_hex(color), 0);
     if (assistant.activation[0]) {
         char text[80];
         snprintf(text, sizeof(text), "激活码：%s", assistant.activation);
         updateLabel(activation_, text);
         lv_obj_remove_flag(activation_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(conversation_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(transcript_, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(activation_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(conversation_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(transcript_, LV_OBJ_FLAG_HIDDEN);
-        updateLabel(transcript_, assistant.reply[0] ? assistant.reply : assistant.recognized);
+        const bool reply = assistant.reply[0] != 0;
+        updateLabel(speaker_, reply ? "小智" : "我");
+        const char *text = reply ? assistant.reply : assistant.recognized[0] ? assistant.recognized : "说点什么吧";
+        if (strcmp(lv_label_get_text(transcript_), text) != 0) {
+            lv_label_set_text(transcript_, text);
+            lv_obj_scroll_to_y(conversation_, 0, LV_ANIM_OFF);
+        }
     }
 }

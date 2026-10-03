@@ -158,17 +158,19 @@ int main(int count, char **arguments)
         assert(listen_calls == cycle + 1 && finish_calls == cycle + 1);
         assert(findLabel(screen, "正在聆听"));
         assert(findLabel(screen, "你好，小智"));
+        assert(findLabel(screen, "我"));
         voice.listening = false;
         voice.speaking = true;
         strlcpy(voice.reply, "你好，我是小智。", sizeof(voice.reply));
         advance();
         assert(findLabel(screen, "正在说话"));
         assert(findLabel(screen, "你好，我是小智。"));
+        assert(findLabel(screen, "小智"));
         assert(!findLabel(screen, "你好，小智"));
         if (cycle == 0) {
             lv_obj_set_style_pad_bottom(screen, 96, 0);
             lv_obj_update_layout(screen);
-            auto *hint = findLabel(screen, "点头像切换 / BOOT 按住说话");
+            auto *hint = findLabel(screen, "按住 BOOT 说话，松开发送");
             lv_area_t hint_area;
             lv_obj_get_coords(hint, &hint_area);
             assert(hint_area.y2 < 264);
@@ -183,6 +185,25 @@ int main(int count, char **arguments)
             lv_mem_monitor_t after = {};
             lv_mem_monitor(&after);
             assert(after.free_size + 1024 >= before.free_size && lv_mem_test() == LV_RESULT_OK);
+            // Replies remain readable beyond the visible card; unchanged refresh
+            // must preserve the reader's scroll position.
+            const char *long_reply = "你好，我是小智。\n你好，我是小智。\n你好，我是小智。\n你好，我是小智。\n你好，我是小智。\n你好，我是小智。";
+            strlcpy(voice.reply, long_reply, sizeof(voice.reply));
+            advance();
+            lv_obj_update_layout(screen);
+            auto *reply_label = findLabel(screen, long_reply);
+            assert(reply_label && lv_label_get_long_mode(reply_label) == LV_LABEL_LONG_WRAP);
+            auto *card = lv_obj_get_parent(reply_label);
+            assert(lv_obj_get_scroll_bottom(card) > 0);
+            lv_obj_scroll_to_y(card, 24, LV_ANIM_OFF);
+            const int scroll = lv_obj_get_scroll_y(card);
+            assert(scroll > 0);
+            advance();
+            assert(lv_obj_get_scroll_y(card) == scroll);
+            save(output + "/long-reply.ppm");
+            strlcpy(voice.reply, "你好，我是小智。", sizeof(voice.reply));
+            advance();
+            assert(lv_obj_get_scroll_y(card) == 0);
             auto *other_screen = lv_obj_create(nullptr);
             lv_screen_load(other_screen);
             strlcpy(voice.reply, "后台不更新页面", sizeof(voice.reply));

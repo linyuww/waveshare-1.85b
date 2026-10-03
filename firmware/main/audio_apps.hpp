@@ -20,6 +20,8 @@ private:
     lv_obj_t *root_ = nullptr;
     lv_obj_t *status_ = nullptr;
     lv_obj_t *transcript_ = nullptr;
+    lv_obj_t *conversation_ = nullptr;
+    lv_obj_t *speaker_ = nullptr;
     lv_obj_t *activation_ = nullptr;
     lv_obj_t *hint_ = nullptr;
     lv_timer_t *timer_ = nullptr;
