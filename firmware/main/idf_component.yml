@@ -6,6 +6,8 @@ dependencies:
   espressif/esp-boost: ==0.3.1
   espressif/esp-lib-utils: ==0.3.0
   espressif/esp_codec_dev: ==1.5.6
+  espressif/esp_websocket_client: ==1.7.0
+  78/esp-opus: ==1.0.5
   espressif/esp_lcd_st77916: ==2.0.2
   espressif/esp_lcd_touch: ==1.2.1
   espressif/esp_lcd_touch_cst816s: ==1.1.1

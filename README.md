@@ -33,8 +33,13 @@ python -m pip install esptool==4.11.0
 | 网络测试 | 检查 DNS、校时和 HTTPS，显示响应码与耗时。 |
 | 设备信息 | 查看电量、电压、电流、功率、温度和容量；上滑查看更多读数及板卡信息。 |
 | Codex Micro | 显示 Codex 额度与像素表盘，提供智能体选择、Send、方向和 BOOT 语音控制。 |
+| 小智助手 | 通过 WebSocket/Opus 对话，支持激活、文字状态、BOOT 说话和设备内 MCP 工具。 |
+| 音乐播放器 | 由小智点歌后自动切换；本机桥接使用耀狐网易点歌 HMAC 鉴权并通过 FFmpeg 转换为 PCM。 |
+| 健身 | 提供周计划、14 个离线动作示意、记组、休息、设置及最近 30 次训练记录。 |
 
 使用额度表盘时，在设置中开启蓝牙，电脑配对 **Codex Micro**，再运行 `scripts/companion/start-companion.cmd`。同步配置见 [伴生程序说明](scripts/companion/README.md)。
+
+小智、音乐桥接、本地 MCP 和音频优先级见 [AI 助手说明](docs/AI-ASSISTANT.md)；健身功能见 [健身说明](docs/FITNESS.md)。所有应用共用原有 Wi-Fi。音频优先级为 Codex 完成提示音 > 小智语音 > 音乐。
 
 ## 额度表盘
 

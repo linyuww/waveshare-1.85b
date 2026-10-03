@@ -1,4 +1,14 @@
 dependencies:
+  78/esp-opus:
+    component_hash: 8182b733f071d7bfe1e837f4c9f8649a63e4c937177f089e65772880c02f2e17
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.5
   espressif/bq27220:
     component_hash: df0a38fae582b535f9e0cc41b811f49ce5dc2e0c70009605c4d57c159efb8f2d
     dependencies:
@@ -230,6 +240,16 @@ dependencies:
     - esp32c5
     - esp32c6
     version: 0.6.1
+  espressif/esp_websocket_client:
+    component_hash: 3fb288702517ef4d75bf933a115f1056ee0c2540d964f9e1d856e0bb67e1dfeb
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.0
   espressif/freetype:
     component_hash: a4169cdd22b3572342b2d640d7082405b8895e3214539283601c03412589b65d
     dependencies:
@@ -330,6 +350,7 @@ dependencies:
       type: local
     version: 1.0.1
 direct_dependencies:
+- 78/esp-opus
 - espressif/bq27220
 - espressif/button
 - espressif/cmake_utilities
@@ -344,6 +365,7 @@ direct_dependencies:
 - espressif/esp_lvgl_adapter
 - espressif/esp_mmap_assets
 - espressif/esp_new_jpeg
+- espressif/esp_websocket_client
 - espressif/freetype
 - espressif/i2c_bus
 - espressif/knob
@@ -354,6 +376,6 @@ direct_dependencies:
 - lvgl/lvgl
 - waveshare/pcf85063a
 - waveshare/qmi8658
-manifest_hash: 2011dd29ae6a778c5a4480f8b6f850bfcc77bdcde2b00f40ef82ee92af8803c2
+manifest_hash: a59c89b767f90375a5bc19feabc8f5127945833d782fa18ed68244b450419010
 target: esp32s3
 version: 2.0.0

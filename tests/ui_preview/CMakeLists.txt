@@ -12,5 +12,17 @@ ${ROOT}/firmware/components/brookesia_core/systems/base/assets/fonts/maison_neue
 ${ROOT}/firmware/components/brookesia_core/systems/phone/assets/images/large/esp_brookesia_image_large_status_bar_wifi_level3_36_36.c)
 target_include_directories(preview PRIVATE ${ROOT}/firmware/main ${ROOT}/firmware/components/codex_micro ${CMAKE_CURRENT_SOURCE_DIR}/stubs)
 target_link_libraries(preview PRIVATE lvgl m)
+add_executable(fitness_preview fitness_preview.cpp
+    ${ROOT}/firmware/main/fitness_model.cpp ${ROOT}/firmware/main/fitness_view.cpp
+    ${ROOT}/firmware/main/fitness_assets.c ${ROOT}/firmware/main/ui_font.c)
+target_include_directories(fitness_preview PRIVATE ${ROOT}/firmware/main)
+target_link_libraries(fitness_preview PRIVATE lvgl m)
+target_compile_options(fitness_preview PRIVATE -UNDEBUG -Wall -Wextra)
 
 target_compile_options(preview PRIVATE -UNDEBUG)
+add_executable(audio_preview ../audio/audio_ui_preview.cpp
+    ${ROOT}/firmware/main/audio_apps.cpp ${ROOT}/firmware/main/app_icons.c ${ROOT}/firmware/main/ui_font.c)
+target_include_directories(audio_preview PRIVATE ${ROOT}/tests/audio/stubs ${ROOT}/firmware/main
+    ${ROOT}/firmware/components/shared_audio /opt/esp/idf/components/json/cJSON)
+target_link_libraries(audio_preview PRIVATE lvgl m)
+target_compile_options(audio_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)

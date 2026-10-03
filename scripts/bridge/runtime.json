@@ -1,0 +1,19 @@
+{
+  "source_project": "codex-quota-widget",
+  "source_head": "a8f54e7fd85ebae238b793d5dd5f569a7e9f62a3",
+  "source_worktree_modified": true,
+  "captured_date": "2026-10-03",
+  "executable": {
+    "path": "bin/codex-ornament-bridge.exe",
+    "sha256": "160a9a49641160317ffd37e264a63dfdf321ba4b907ffd724ca74b4a39c39fb4",
+    "bytes": 9135616,
+    "original_modified_at": "2026-08-05T17:33:57.6308893+08:00"
+  },
+  "source_files": {
+    "crates/codex-ornament-bridge/Cargo.toml": "7dab78462a592507b85073951f220e14423cbc1ccb83bbe8139d4ec350c26983",
+    "crates/codex-ornament-bridge/src/main.rs": "25228bba574ca8ae87294645c1e50548c23f578a40b5b5a5eeecc208c0651482",
+    "crates/quota-core/Cargo.toml": "fc5d9095ff065d11bde5effd561e99d9d329fa7e5ac6e4dcb8b48861b8ab24ac",
+    "crates/quota-core/src/lib.rs": "9419bcc17a7bb2173e12f7c6ac74438097e30467c36e1be6257c22594b3d7f81"
+  },
+  "source_checksum_format": "UTF-8 text with LF line endings"
+}

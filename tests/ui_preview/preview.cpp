@@ -40,8 +40,8 @@ int main(int argc,char **argv) {
     lv_display_set_buffers(d,buffer,nullptr,sizeof(buffer),LV_DISPLAY_RENDER_MODE_FULL);lv_display_set_flush_cb(d,flush);
     auto *screen=lv_screen_active();lv_obj_remove_style_all(screen);lv_obj_set_style_bg_opa(screen,255,0);
     lv_obj_remove_flag(screen,LV_OBJ_FLAG_SCROLLABLE);
-    const lv_image_dsc_t *icons[]={&icon_settings,&icon_clock,&icon_network,&icon_about,&icon_codex};
-    const char *names[]={"设置","时钟","网络测试","设备信息","Codex Micro"};
+    const lv_image_dsc_t *icons[]={&icon_settings,&icon_clock,&icon_network,&icon_about,&icon_codex,&icon_fitness,&icon_assistant,&icon_music};
+    const char *names[]={"设置","时钟","网络测试","设备信息","Codex Micro","健身","小智助手","音乐播放器"};
     for(int page=0;page<2;++page) {
         lv_obj_clean(screen);auto *wall=lv_image_create(screen);lv_image_set_src(wall,&scr_bg);lv_obj_set_pos(wall,0,0);
         // Static values for inspection; live firmware uses its existing status bar.
@@ -57,7 +57,7 @@ int main(int argc,char **argv) {
         int rowpad=(l::table_height-2*l::tile)/3,colpad=(l::table_width-2*l::tile)/3;
         lv_obj_set_style_pad_row(table,rowpad,0);lv_obj_set_style_pad_ver(table,rowpad,0);
         lv_obj_set_style_pad_column(table,colpad,0);lv_obj_set_style_pad_hor(table,colpad,0);
-        for(int i=page*4;i<(page==0?4:5);++i) {
+        for(int i=page*4;i<(page==0?4:8);++i) {
             auto *tile=box(table,l::tile,l::tile);lv_obj_set_flex_flow(tile,LV_FLEX_FLOW_COLUMN);
             lv_obj_set_flex_align(tile,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER,LV_FLEX_ALIGN_CENTER);lv_obj_set_style_pad_row(tile,l::label_gap,0);
             auto *imagebox=box(tile,l::icon,l::icon);auto *img=lv_image_create(imagebox);lv_obj_remove_style_all(img);

@@ -120,7 +120,7 @@ void BluetoothService::worker()
         if (chime_error != ESP_OK) ESP_LOGW(TAG, "Chime unavailable: %s", esp_err_to_name(chime_error));
         else {
             chimes_ = xQueueCreate(1, sizeof(int));
-            if (chimes_ && xTaskCreatePinnedToCore(audioEntry, "codex_chime", 4096, chimes_, 2, nullptr, 1) != pdPASS) {
+            if (chimes_ && xTaskCreatePinnedToCore(audioEntry, "codex_chime", 4096, chimes_, 6, nullptr, 1) != pdPASS) {
                 vQueueDelete(chimes_);
                 chimes_ = nullptr;
                 ESP_LOGW(TAG, "Chime task allocation failed");

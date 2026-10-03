@@ -11,8 +11,8 @@ for page in (1,2):
     # Mask represents the physical circular panel; firmware wallpaper covers the full square.
     sheet.paste(im,(20+(page-1)*380,35),mask)
 sheet.save(OUT/'desktop-round.png')
-icons=Image.new('RGB',(580,132),(21,43,72))
-for i,k in enumerate(('settings','clock','network','about','codex')):
+icons=Image.new('RGB',(922,132),(21,43,72))
+for i,k in enumerate(('settings','clock','network','about','codex','fitness','assistant','music')):
     im=Image.open(OUT/f'{k}.png');icons.paste(im,(18+114*i,24),im)
 icons.save(OUT/'icons.png')
 print(OUT/'desktop-round.png')
