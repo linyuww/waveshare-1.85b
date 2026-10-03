@@ -28,11 +28,12 @@ int main(int count, char **arguments)
     assert(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "capabilities"));
     cJSON_Delete(response);
     response = dispatch(R"({"jsonrpc":"2.0","id":"list","method":"tools/list"})");
-    assert(cJSON_GetArraySize(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "tools")) == 8);
+    assert(cJSON_GetArraySize(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "tools")) == 4);
+    assert(catalog.find("self.music.") == std::string::npos);
     assert(std::string(cJSON_GetObjectItem(response, "id")->valuestring) == "list");
     cJSON_Delete(response);
     assert(!dispatch(R"({"jsonrpc":"2.0","method":"notifications/initialized"})"));
-    assert(!dispatch(R"({"jsonrpc":"2.0","method":"tools/call","params":{"name":"self.music.stop"}})"));
+    assert(!dispatch(R"({"jsonrpc":"2.0","method":"tools/call","params":{"name":"self.codex.open"}})"));
     assert(calls == 0);
     auto *tools = cJSON_Parse(catalog.c_str());
     const cJSON *tool = nullptr;
@@ -46,7 +47,6 @@ int main(int count, char **arguments)
         cJSON_AddStringToObject(params, "name", name->valuestring);
         auto *values = cJSON_AddObjectToObject(params, "arguments");
         if (std::string(name->valuestring) == "self.apps.open") cJSON_AddStringToObject(values, "app", "codex");
-        if (std::string(name->valuestring) == "self.music.play") cJSON_AddStringToObject(values, "song", "测试歌曲");
         if (std::string(name->valuestring) == "self.audio.set_volume") cJSON_AddNumberToObject(values, "volume", 100);
         char *text = cJSON_PrintUnformatted(request);
         response = dispatch(text);
@@ -57,11 +57,15 @@ int main(int count, char **arguments)
         cJSON_Delete(response);
     }
     cJSON_Delete(tools);
-    assert(calls == 8);
+    assert(calls == 4);
     for (const char *text : {
         R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.play","arguments":{}}})",
-        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.play","arguments":{"song":""}}})",
-        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.play","arguments":{"song":42}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.open","arguments":{}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.pause","arguments":{}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.stop","arguments":{}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.apps.open","arguments":{}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.apps.open","arguments":{"app":42}}})",
+        R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.apps.open","arguments":{"app":"music"}}})",
         R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.audio.set_volume","arguments":{"volume":101}}})",
         R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.audio.set_volume","arguments":{"volume":-1}}})",
         R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.audio.set_volume","arguments":{"volume":3.5}}})",
@@ -75,9 +79,9 @@ int main(int count, char **arguments)
         assert(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "error"), "code")->valueint == -32602);
         cJSON_Delete(response);
     }
-    assert(calls == 8);
+    assert(calls == 4);
     succeeded = false;
-    response = dispatch(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.music.pause"}})");
+    response = dispatch(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"self.codex.open"}})");
     assert(cJSON_IsTrue(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "isError")));
     cJSON_Delete(response);
     response = dispatch(R"({"id":1,"method":"tools/list"})");
@@ -86,5 +90,5 @@ int main(int count, char **arguments)
     response = dispatch(R"({"jsonrpc":"2.0","id":1,"method":"unknown"})");
     assert(cJSON_GetObjectItem(cJSON_GetObjectItem(response, "error"), "code")->valueint == -32601);
     cJSON_Delete(response);
-    puts("PASS: eight tool schemas, routing, validation, notifications and execution failures");
+    puts("PASS: four tool schemas, disabled music tools, validation, notifications and execution failures");
 }

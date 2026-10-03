@@ -15,9 +15,10 @@ public:
         char ota_url[256] = "https://api.tenclass.net/xiaozhi/ota/";
         char websocket_url[256] = {};
         char token[512] = {};
-        char music_url[256] = {};
+        char reserved_music_url[256] = {};
         int volume = 60;
     };
+    static_assert(sizeof(Config) == 1284, "Preserve the saved assistant configuration layout");
     struct Snapshot {
         bool connected = false;
         bool listening = false;
@@ -34,13 +35,12 @@ public:
     bool saveConfig(const Config &config);
     bool start();
     bool stop();
-    bool listen();
-    bool finishListening();
+    bool toggleChat();
     bool setVolume(int percent);
     bool invokeTool(const char *name, const cJSON *arguments, std::string &message);
 
 private:
-    enum class Action { Start, Stop, Listen, Finish, Save, Volume };
+    enum class Action { Start, Stop, Listen, Toggle, Save, Volume };
     struct Command { Action action; int volume = 0; };
     struct Packet { int opcode; size_t length; char *data; };
     static void workerEntry(void *context);
@@ -76,6 +76,7 @@ private:
     bool hello_ = false;
     bool listening_ = false;
     bool speaking_ = false;
+    bool aborted_ = false;
     int downlink_rate_ = 24000;
     uint32_t captured_frames_ = 0;
     int64_t hello_deadline_ = 0;

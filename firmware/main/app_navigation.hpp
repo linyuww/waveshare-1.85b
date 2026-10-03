@@ -2,7 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-enum class AppTarget { Codex, Music, Assistant, Settings };
+enum class AppTarget { Codex, Assistant, Settings };
 class AppNavigation {
 public:
     static bool initialize();

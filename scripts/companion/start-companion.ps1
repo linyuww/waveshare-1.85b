@@ -125,10 +125,6 @@ while ($true) {
     }
 
     # Re-resolved every attempt on purpose -- see the header comment.
-    if (-not $Probe) {
-        try { & (Join-Path $script:ScriptsDir 'start-music-bridge.ps1') }
-        catch { Write-Log "run #$attempt  music bridge startup failed" }
-    }
 
     $address = Get-BoardAddress -Configured $config.DeviceAddress -Python $python
     if (-not $address) {

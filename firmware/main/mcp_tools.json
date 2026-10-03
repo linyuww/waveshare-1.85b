@@ -1,10 +1,6 @@
 [
   {"name":"self.codex.open","description":"打开设备上的 Codex Micro 仪表盘和电脑控制工具。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-  {"name":"self.music.open","description":"打开音乐播放器，不自动播放。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-  {"name":"self.apps.open","description":"打开设备应用。","inputSchema":{"type":"object","properties":{"app":{"type":"string","enum":["codex","music","assistant","settings"]}},"required":["app"],"additionalProperties":false}},
-  {"name":"self.music.play","description":"根据歌名和可选歌手点歌。切换到音乐播放器，小智界面待机但保留后台语音以接收暂停命令。","inputSchema":{"type":"object","properties":{"song":{"type":"string","minLength":1,"maxLength":120},"artist":{"type":"string","maxLength":120}},"required":["song"],"additionalProperties":false}},
-  {"name":"self.music.pause","description":"暂停音乐并返回小智界面继续对话。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-  {"name":"self.music.stop","description":"停止音乐并返回小智界面。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-  {"name":"self.audio.set_volume","description":"设置共享扬声器音量，0 静音，100 最大。Codex 任务完成提示音的优先级始终高于语音和音乐。","inputSchema":{"type":"object","properties":{"volume":{"type":"integer","minimum":0,"maximum":100}},"required":["volume"],"additionalProperties":false}},
-  {"name":"self.device.get_status","description":"查询共享 Wi-Fi、语音助手、音乐和音量状态，不返回密码或令牌。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}
+  {"name":"self.apps.open","description":"打开 Codex Micro、小智助手或共享设置。","inputSchema":{"type":"object","properties":{"app":{"type":"string","enum":["codex","assistant","settings"]}},"required":["app"],"additionalProperties":false}},
+  {"name":"self.audio.set_volume","description":"设置共享扬声器音量，0 静音，100 最大。Codex 任务完成提示音始终优先于小智语音。","inputSchema":{"type":"object","properties":{"volume":{"type":"integer","minimum":0,"maximum":100}},"required":["volume"],"additionalProperties":false}},
+  {"name":"self.device.get_status","description":"查询共享 Wi-Fi、语音助手和音量状态，不返回密码或令牌。","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}
 ]

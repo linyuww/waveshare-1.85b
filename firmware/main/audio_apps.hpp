@@ -4,26 +4,21 @@
 
 class AudioApp : public esp_brookesia::systems::phone::App {
 public:
-    enum class Kind { Assistant, Music };
-    explicit AudioApp(Kind kind);
+    AudioApp();
     bool run() override;
     bool back() override;
     bool close() override;
 private:
-    static void onAction(lv_event_t *event);
-    static void onFocus(lv_event_t *event);
-    static void onKeyboard(lv_event_t *event);
+    static void onHome(lv_event_t *event);
+    static void onToggle(lv_event_t *event);
     static void onTimer(lv_timer_t *timer);
     static void onRootDeleted(lv_event_t *event);
-    lv_obj_t *button(lv_obj_t *parent, const char *text, int action);
     void refresh();
-    Kind kind_;
     lv_obj_t *root_ = nullptr;
     lv_obj_t *status_ = nullptr;
     lv_obj_t *transcript_ = nullptr;
-    lv_obj_t *song_ = nullptr;
-    lv_obj_t *artist_ = nullptr;
-    lv_obj_t *keyboard_ = nullptr;
+    lv_obj_t *activation_ = nullptr;
+    lv_obj_t *hint_ = nullptr;
     lv_timer_t *timer_ = nullptr;
     bool boot_pressed_ = false;
 };

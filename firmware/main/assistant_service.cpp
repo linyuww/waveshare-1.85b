@@ -6,7 +6,6 @@
 #include "assistant_console.hpp"
 #include "http_helpers.hpp"
 #include "local_mcp.hpp"
-#include "music_service.hpp"
 #include "shared_audio.hpp"
 #include "system_service.hpp"
 #include "xiaozhi_protocol.hpp"
@@ -33,10 +32,9 @@ private:
 bool validConfig(const AssistantService::Config &config)
 {
     if (!memchr(config.ota_url, 0, sizeof(config.ota_url)) || !memchr(config.websocket_url, 0, sizeof(config.websocket_url)) ||
-        !memchr(config.token, 0, sizeof(config.token)) || !memchr(config.music_url, 0, sizeof(config.music_url))) return false;
+        !memchr(config.token, 0, sizeof(config.token))) return false;
     return audio_http::validUrl(config.ota_url) &&
         (!config.websocket_url[0] || audio_http::validUrl(config.websocket_url, true)) &&
-        (!config.music_url[0] || audio_http::validUrl(config.music_url)) &&
         !strchr(config.token, '\r') && !strchr(config.token, '\n') && config.volume >= 0 && config.volume <= 100;
 }
 }
@@ -90,8 +88,7 @@ bool AssistantService::enqueue(Action action, int volume)
 }
 bool AssistantService::start() { return enqueue(Action::Start); }
 bool AssistantService::stop() { return enqueue(Action::Stop); }
-bool AssistantService::listen() { return enqueue(Action::Listen); }
-bool AssistantService::finishListening() { return enqueue(Action::Finish); }
+bool AssistantService::toggleChat() { return enqueue(Action::Toggle); }
 bool AssistantService::setVolume(int percent) { return percent >= 0 && percent <= 100 && enqueue(Action::Volume, percent); }
 bool AssistantService::saveConfig(const Config &value)
 {
@@ -244,7 +241,7 @@ void AssistantService::disconnect()
         socket_ = nullptr;
     }
     socket_connected_ = false;
-    announced_connected_ = hello_ = listening_ = speaking_ = false;
+    announced_connected_ = hello_ = listening_ = speaking_ = aborted_ = false;
     hello_deadline_ = speech_deadline_ = 0;
     captured_frames_ = 0;
     shared_audio::prioritize(shared_audio::Source::Assistant, false);
@@ -347,21 +344,24 @@ void AssistantService::handleText(const char *text)
             Lock lock(mutex_);
             status_.connected = hello_;
             status_.activation[0] = 0;
-            strlcpy(status_.message, hello_ ? "正在聆听，可说打开 Codex 或播放音乐" : "语音通道初始化失败", sizeof(status_.message));
+            strlcpy(status_.message, hello_ ? "正在聆听" : "语音通道初始化失败", sizeof(status_.message));
             if (!hello_) receive_failed_ = true;
         }
     } else if (strcmp(type, "stt") == 0) {
         Lock lock(mutex_);
         strlcpy(status_.recognized, audio_http::string(root, "text"), sizeof(status_.recognized));
+        status_.reply[0] = 0;
     } else if (strcmp(type, "tts") == 0) {
         const char *state = audio_http::string(root, "state");
         if (strcmp(state, "start") == 0) {
             speaking_ = true;
+            aborted_ = false;
             listening_ = false;
             speech_deadline_ = esp_timer_get_time() + 30000000;
             shared_audio::prioritize(shared_audio::Source::Assistant, true);
         } else if (strcmp(state, "stop") == 0) {
             speaking_ = false;
+            aborted_ = false;
             listening_ = hello_ && sendListen("start");
             shared_audio::prioritize(shared_audio::Source::Assistant, false);
             speech_deadline_ = 0;
@@ -387,7 +387,7 @@ void AssistantService::handleText(const char *text)
 
 void AssistantService::handleAudio(const char *data, size_t length)
 {
-    if (!decoder_ || !hello_ || !speaking_ || length > 4096) return;
+    if (!decoder_ || !hello_ || !speaking_ || aborted_ || length > 4096) return;
     const int count = opus_decode(decoder_, reinterpret_cast<const unsigned char *>(data), length, decode_pcm_, 5760, 0);
     if (count < 0) { receive_failed_ = true; return; }
     speech_deadline_ = esp_timer_get_time() + 30000000;
@@ -418,30 +418,20 @@ bool AssistantService::invokeTool(const char *name, const cJSON *arguments, std:
 {
     bool result = false;
     if (strcmp(name, "self.codex.open") == 0) result = AppNavigation::request(AppTarget::Codex);
-    else if (strcmp(name, "self.music.open") == 0) result = AppNavigation::request(AppTarget::Music);
     else if (strcmp(name, "self.apps.open") == 0) {
         const char *app = audio_http::string(arguments, "app");
-        const auto target = strcmp(app, "codex") == 0 ? AppTarget::Codex : strcmp(app, "music") == 0 ? AppTarget::Music : strcmp(app, "settings") == 0 ? AppTarget::Settings : AppTarget::Assistant;
+        const auto target = strcmp(app, "codex") == 0 ? AppTarget::Codex : strcmp(app, "settings") == 0 ? AppTarget::Settings : AppTarget::Assistant;
         result = AppNavigation::request(target);
-    } else if (strcmp(name, "self.music.play") == 0) {
-        result = MusicService::instance().play(audio_http::string(arguments, "song"), audio_http::string(arguments, "artist"));
-    } else if (strcmp(name, "self.music.pause") == 0) {
-        MusicService::instance().pause();
-        result = true;
-    } else if (strcmp(name, "self.music.stop") == 0) {
-        MusicService::instance().stop();
-        result = true;
     } else if (strcmp(name, "self.audio.set_volume") == 0) {
         result = setVolume(cJSON_GetObjectItemCaseSensitive(arguments, "volume")->valueint);
     } else if (strcmp(name, "self.device.get_status") == 0) {
         const auto network = SystemService::instance().snapshot();
-        const auto music = MusicService::instance().snapshot();
         char status[256];
-        snprintf(status, sizeof(status), "{\"wifi_connected\":%s,\"assistant_connected\":%s,\"music_state\":%d,\"volume\":%d,\"chime_priority\":true}", network.state == SystemService::NetworkState::Connected ? "true" : "false", hello_ ? "true" : "false", static_cast<int>(music.state), shared_audio::volume());
+        snprintf(status, sizeof(status), "{\"wifi_connected\":%s,\"assistant_connected\":%s,\"volume\":%d,\"chime_priority\":true}", network.state == SystemService::NetworkState::Connected ? "true" : "false", hello_ ? "true" : "false", shared_audio::volume());
         message = status;
         return true;
     }
-    message = result ? "操作已受理" : "操作失败：请检查共享网络、音乐服务地址或队列状态";
+    message = result ? "操作已受理" : "操作失败：请检查共享网络或队列状态";
     return result;
 }
 
@@ -454,6 +444,12 @@ void AssistantService::worker()
         assistant_console::poll();
         Command command;
         if (xQueueReceive(commands_, &command, pdMS_TO_TICKS(10)) == pdTRUE) {
+            if (command.action == Action::Toggle) {
+                const auto action = xiaozhi_protocol::toggleChatAction(socket_ && !hello_, hello_, listening_);
+                if (action == xiaozhi_protocol::ChatAction::Ignore) continue;
+                command.action = action == xiaozhi_protocol::ChatAction::Stop ? Action::Stop :
+                    action == xiaozhi_protocol::ChatAction::Connect ? Action::Start : Action::Listen;
+            }
             if (command.action == Action::Start) {
                 disconnect();
                 receive_failed_ = false;
@@ -461,24 +457,25 @@ void AssistantService::worker()
                 if (result != ESP_OK && result != ESP_ERR_NOT_FINISHED && snapshot().message[0] == 0) setMessage("连接失败，请重试");
             } else if (command.action == Action::Stop) {
                 disconnect();
-                setMessage("小智已停止，音乐和 Codex 提示音不受影响");
+                setMessage("点击开始对话");
             } else if (command.action == Action::Listen) {
                 if (hello_) {
-                    auto *abort = cJSON_CreateObject();
-                    cJSON_AddStringToObject(abort, "type", "abort");
-                    cJSON_AddStringToObject(abort, "session_id", session_id_);
-                    send(abort);
-                    speaking_ = false;
-                    shared_audio::prioritize(shared_audio::Source::Assistant, false);
-                    listening_ = sendListen("start");
+                    if (speaking_) {
+                        aborted_ = true;
+                        auto *abort = cJSON_CreateObject();
+                        cJSON_AddStringToObject(abort, "type", "abort");
+                        cJSON_AddStringToObject(abort, "session_id", session_id_);
+                        if (!send(abort)) receive_failed_ = true;
+                        shared_audio::prioritize(shared_audio::Source::Assistant, false);
+                    } else {
+                        speech_deadline_ = 0;
+                        listening_ = sendListen("start");
+                    }
                 } else {
                     disconnect();
                     receive_failed_ = false;
                     connect();
                 }
-            } else if (command.action == Action::Finish) {
-                if (hello_) sendListen("stop");
-                listening_ = false;
             } else if (command.action == Action::Save) {
                 const auto value = config();
                 shared_audio::setVolume(value.volume);
@@ -515,7 +512,7 @@ void AssistantService::worker()
             (hello_deadline_ && now > hello_deadline_) || (speech_deadline_ && speaking_ && now > speech_deadline_) ||
             SystemService::instance().snapshot().state != SystemService::NetworkState::Connected)) {
             disconnect();
-            setMessage("语音连接已断开，请点击开始重连");
+            setMessage("连接已断开，点击重连");
         }
         capture();
         { Lock lock(mutex_); status_.listening = listening_; status_.speaking = speaking_; }

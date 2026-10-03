@@ -3,6 +3,13 @@
 #include <cstring>
 
 namespace xiaozhi_protocol {
+enum class ChatAction { Ignore, Connect, Listen, Stop };
+inline ChatAction toggleChatAction(bool connecting, bool connected, bool listening)
+{
+    if (connecting) return ChatAction::Ignore;
+    if (!connected) return ChatAction::Connect;
+    return listening ? ChatAction::Stop : ChatAction::Listen;
+}
 inline bool deviceId(const char *mac, char (&output)[18])
 {
     output[0] = 0;

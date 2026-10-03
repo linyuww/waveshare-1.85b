@@ -1,21 +1,14 @@
 #include "audio_apps.hpp"
 #include <cstdio>
 #include <cstring>
-#include "app_navigation.hpp"
-#include "music_service.hpp"
-#include "shared_audio.hpp"
-#include "system_service.hpp"
 #include "ui_app_shell.hpp"
 #include "driver/gpio.h"
 
 namespace {
-enum Action { Home, Start, Listen, Finish, Stop, Settings, Play, Pause, Resume };
 struct SettingsForm {
-    lv_obj_t *root;
     lv_obj_t *ota;
     lv_obj_t *websocket;
     lv_obj_t *token;
-    lv_obj_t *music;
     lv_obj_t *volume;
     lv_obj_t *message;
     lv_obj_t *keyboard;
@@ -31,7 +24,7 @@ void updateLabel(lv_obj_t *object, const char *text)
 {
     if (strcmp(lv_label_get_text(object), text) != 0) lv_label_set_text(object, text);
 }
-lv_obj_t *input(lv_obj_t *parent, const char *placeholder, const char *text = "", unsigned maximum = 120)
+lv_obj_t *input(lv_obj_t *parent, const char *placeholder, const char *text, unsigned maximum)
 {
     auto *object = lv_textarea_create(parent);
     lv_obj_set_width(object, LV_PCT(100));
@@ -60,7 +53,6 @@ void saveSettings(lv_event_t *event)
     strlcpy(config.ota_url, lv_textarea_get_text(form->ota), sizeof(config.ota_url));
     strlcpy(config.websocket_url, lv_textarea_get_text(form->websocket), sizeof(config.websocket_url));
     strlcpy(config.token, lv_textarea_get_text(form->token), sizeof(config.token));
-    strlcpy(config.music_url, lv_textarea_get_text(form->music), sizeof(config.music_url));
     config.volume = lv_slider_get_value(form->volume);
     const bool saved = AssistantService::instance().saveConfig(config);
     lv_label_set_text(form->message, saved ? "保存请求已提交，重连小智生效" : "地址无效或队列已满，请重试");
@@ -71,10 +63,9 @@ void saveSettings(lv_event_t *event)
 void buildSharedAudioSettings(lv_obj_t *body)
 {
     auto *form = new SettingsForm{};
-    form->root = body;
     const auto config = AssistantService::instance().config();
     label(body, "AI 助手与共享音频");
-    label(body, "Wi-Fi 共用本页设置。提示音优先于语音和音乐。");
+    label(body, "Wi-Fi 共用本页设置。Codex 提示音优先。");
     label(body, "激活服务地址");
     form->ota = input(body, "https://.../ota/", config.ota_url, 255);
     label(body, "自建 WebSocket（留空使用激活服务）");
@@ -82,8 +73,6 @@ void buildSharedAudioSettings(lv_obj_t *body)
     label(body, "小智令牌（可留空）");
     form->token = input(body, "Token", config.token, 511);
     lv_textarea_set_password_mode(form->token, true);
-    label(body, "音乐服务地址（与旧摆件 /resolve、/stream 兼容）");
-    form->music = input(body, "http://电脑IP:端口/music", config.music_url, 255);
     label(body, "共享音量（0 静音，100 最大）");
     form->volume = lv_slider_create(body);
     lv_obj_set_width(form->volume, LV_PCT(90));
@@ -100,7 +89,7 @@ void buildSharedAudioSettings(lv_obj_t *body)
     lv_obj_align(form->keyboard, LV_ALIGN_BOTTOM_MID, 0, -35);
     lv_obj_set_style_text_font(form->keyboard, &lv_font_montserrat_18, 0);
     lv_obj_add_flag(form->keyboard, LV_OBJ_FLAG_HIDDEN);
-    for (auto *field : {form->ota, form->websocket, form->token, form->music}) lv_obj_add_event_cb(field, settingsFocus, LV_EVENT_FOCUSED, form);
+    for (auto *field : {form->ota, form->websocket, form->token}) lv_obj_add_event_cb(field, settingsFocus, LV_EVENT_FOCUSED, form);
     lv_obj_add_event_cb(form->keyboard, settingsKeyboard, LV_EVENT_ALL, form);
     lv_obj_add_event_cb(save, saveSettings, LV_EVENT_CLICKED, form);
     lv_obj_add_event_cb(body, [](lv_event_t *event) {
@@ -110,67 +99,52 @@ void buildSharedAudioSettings(lv_obj_t *body)
     }, LV_EVENT_DELETE, form);
 }
 
-AudioApp::AudioApp(Kind kind) : App(kind == Kind::Assistant ? "小智助手" : "音乐播放器", kind == Kind::Assistant ? &icon_assistant : &icon_music, true, false, false), kind_(kind) {}
-lv_obj_t *AudioApp::button(lv_obj_t *parent, const char *text, int action)
-{
-    auto *object = lv_button_create(parent);
-    lv_obj_set_width(object, LV_PCT(100));
-    auto *caption = lv_label_create(object);
-    lv_label_set_text(caption, text);
-    lv_obj_center(caption);
-    lv_obj_set_user_data(object, reinterpret_cast<void *>(static_cast<intptr_t>(action)));
-    lv_obj_add_event_cb(object, onAction, LV_EVENT_CLICKED, this);
-    return object;
-}
+AudioApp::AudioApp() : App("小智助手", &icon_assistant, true, false, false) {}
 bool AudioApp::run()
 {
     root_ = lv_screen_active();
     lv_obj_add_event_cb(root_, onRootDeleted, LV_EVENT_DELETE, this);
-    const auto shell = createLauncherAppShell(root_, kind_ == Kind::Assistant ? "小智助手" : "音乐播放器");
-    lv_obj_set_user_data(shell.home, reinterpret_cast<void *>(static_cast<intptr_t>(Home)));
-    lv_obj_add_event_cb(shell.home, onAction, LV_EVENT_CLICKED, this);
-    status_ = label(shell.body, "");
+    const auto shell = createLauncherAppShell(root_, "小智助手");
+    lv_obj_add_event_cb(shell.home, onHome, LV_EVENT_CLICKED, this);
+    lv_obj_remove_flag(shell.body, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_row(shell.body, 6, 0);
+    lv_obj_set_style_text_align(shell.body, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_flex_align(shell.body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    status_ = label(shell.body, "正在连接");
+    lv_obj_set_height(status_, 24);
+    lv_label_set_long_mode(status_, LV_LABEL_LONG_DOT);
+    auto *avatar = lv_image_create(shell.body);
+    lv_image_set_src(avatar, &icon_assistant);
+    lv_obj_add_flag(avatar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(avatar, onToggle, LV_EVENT_CLICKED, this);
+    activation_ = label(shell.body, "");
+    lv_obj_add_flag(activation_, LV_OBJ_FLAG_HIDDEN);
     transcript_ = label(shell.body, "");
-    if (kind_ == Kind::Assistant) {
-        button(shell.body, "开始对话", Start);
-        button(shell.body, "打断并聆听", Listen);
-        button(shell.body, "说完了", Finish);
-        button(shell.body, "停止小智", Stop);
-        button(shell.body, "共享设置", Settings);
-        label(shell.body, "BOOT 按下说话，松开发送。音乐待机时仍监听暂停命令。");
-        gpio_config_t button_config = {};
-        button_config.pin_bit_mask = 1ULL << GPIO_NUM_0;
-        button_config.mode = GPIO_MODE_INPUT;
-        button_config.pull_up_en = GPIO_PULLUP_ENABLE;
-        gpio_config(&button_config);
-    } else {
-        song_ = input(shell.body, "歌名");
-        artist_ = input(shell.body, "歌手（可留空）");
-        keyboard_ = lv_keyboard_create(root_);
-        lv_obj_set_size(keyboard_, 300, 150);
-        lv_obj_align(keyboard_, LV_ALIGN_BOTTOM_MID, 0, -35);
-        lv_obj_set_style_text_font(keyboard_, &lv_font_montserrat_18, 0);
-        lv_obj_add_flag(keyboard_, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_event_cb(song_, onFocus, LV_EVENT_FOCUSED, this);
-        lv_obj_add_event_cb(artist_, onFocus, LV_EVENT_FOCUSED, this);
-        lv_obj_add_event_cb(keyboard_, onKeyboard, LV_EVENT_ALL, this);
-        button(shell.body, "播放", Play);
-        button(shell.body, "暂停并返回小智", Pause);
-        button(shell.body, "继续播放", Resume);
-        button(shell.body, "共享设置", Settings);
-    }
+    lv_obj_set_height(transcript_, 0);
+    lv_obj_set_flex_grow(transcript_, 1);
+    lv_label_set_long_mode(transcript_, LV_LABEL_LONG_DOT);
+    hint_ = label(shell.body, "点头像 / BOOT 切换对话");
+    lv_obj_set_style_text_color(hint_, lv_color_hex(0xAAB9CB), 0);
+    gpio_config_t button_config = {};
+    button_config.pin_bit_mask = 1ULL << GPIO_NUM_0;
+    button_config.mode = GPIO_MODE_INPUT;
+    button_config.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&button_config);
+    boot_pressed_ = gpio_get_level(GPIO_NUM_0) == 0;
     timer_ = lv_timer_create(onTimer, 100, this);
-    refresh();
+    if (!AssistantService::instance().start()) updateLabel(status_, "暂时无法开始，请点击重试");
     return true;
 }
 bool AudioApp::back() { return notifyCoreClosed(); }
 bool AudioApp::close()
 {
+    const bool was_open = root_ || timer_;
     if (root_) lv_obj_remove_event_cb_with_user_data(root_, onRootDeleted, this);
     if (timer_) lv_timer_delete(timer_);
     timer_ = nullptr;
-    root_ = status_ = transcript_ = song_ = artist_ = keyboard_ = nullptr;
+    root_ = status_ = transcript_ = activation_ = hint_ = nullptr;
     boot_pressed_ = false;
+    if (was_open) AssistantService::instance().stop();
     return true;
 }
 void AudioApp::onRootDeleted(lv_event_t *event)
@@ -180,69 +154,37 @@ void AudioApp::onRootDeleted(lv_event_t *event)
     self->root_ = nullptr;
     self->close();
 }
-void AudioApp::onAction(lv_event_t *event)
+void AudioApp::onHome(lv_event_t *event)
 {
-    auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
-    const int action = static_cast<int>(reinterpret_cast<intptr_t>(lv_obj_get_user_data(lv_event_get_target_obj(event))));
-    auto &assistant = AssistantService::instance();
-    bool result = true;
-    switch (action) {
-    case Home: self->notifyCoreClosed(); return;
-    case Start: result = assistant.start(); break;
-    case Listen: result = assistant.listen(); break;
-    case Finish: result = assistant.finishListening(); break;
-    case Stop: result = assistant.stop(); break;
-    case Settings: result = AppNavigation::request(AppTarget::Settings); break;
-    case Play:
-        result = MusicService::instance().play(lv_textarea_get_text(self->song_), lv_textarea_get_text(self->artist_));
-        lv_obj_add_flag(self->keyboard_, LV_OBJ_FLAG_HIDDEN);
-        break;
-    case Pause: MusicService::instance().pause(); break;
-    case Resume: result = MusicService::instance().resume(); break;
-    }
-    if (!result) lv_label_set_text(self->status_, "操作未受理，请检查歌名、共享设置或服务状态");
+    static_cast<AudioApp *>(lv_event_get_user_data(event))->notifyCoreClosed();
 }
-void AudioApp::onFocus(lv_event_t *event)
+void AudioApp::onToggle(lv_event_t *event)
 {
     auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
-    lv_keyboard_set_textarea(self->keyboard_, lv_event_get_target_obj(event));
-    lv_obj_remove_flag(self->keyboard_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_scroll_to_view(lv_event_get_target_obj(event), LV_ANIM_OFF);
-}
-void AudioApp::onKeyboard(lv_event_t *event)
-{
-    auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
-    if (lv_event_get_code(event) == LV_EVENT_READY || lv_event_get_code(event) == LV_EVENT_CANCEL) lv_obj_add_flag(self->keyboard_, LV_OBJ_FLAG_HIDDEN);
+    if (!AssistantService::instance().toggleChat()) updateLabel(self->status_, "操作未受理，请稍后重试");
 }
 void AudioApp::onTimer(lv_timer_t *timer)
 {
     auto *self = static_cast<AudioApp *>(lv_timer_get_user_data(timer));
     if (!self->root_ || !self->status_ || !self->transcript_ || self->root_ != lv_screen_active()) return;
-    if (self->kind_ == Kind::Assistant && self->root_ == lv_screen_active()) {
-        const bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
-        if (pressed && !self->boot_pressed_) AssistantService::instance().listen();
-        if (!pressed && self->boot_pressed_) AssistantService::instance().finishListening();
-        self->boot_pressed_ = pressed;
-    }
+    const bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
+    if (!pressed && self->boot_pressed_) AssistantService::instance().toggleChat();
+    self->boot_pressed_ = pressed;
     self->refresh();
 }
 void AudioApp::refresh()
 {
-    const auto music = MusicService::instance().snapshot();
-    const bool music_active = music.state == MusicService::State::Playing || music.state == MusicService::State::Resolving;
-    char text[900];
-    if (kind_ == Kind::Assistant) {
-        const auto network = SystemService::instance().snapshot();
-        const auto assistant = AssistantService::instance().snapshot();
-        snprintf(text, sizeof(text), "Wi-Fi：%s\n%s\n%s%s", SystemService::stateText(network.state), music_active ? "音乐播放中，小智待机并后台聆听" : assistant.message, assistant.activation[0] ? "激活码：" : "", assistant.activation);
-        updateLabel(status_, text);
-        snprintf(text, sizeof(text), "我：%s\n小智：%s", assistant.recognized[0] ? assistant.recognized : "--", assistant.reply[0] ? assistant.reply : "--");
-        updateLabel(transcript_, text);
+    const auto assistant = AssistantService::instance().snapshot();
+    updateLabel(status_, assistant.speaking ? "正在说话" : assistant.listening ? "正在聆听" : assistant.message);
+    if (assistant.activation[0]) {
+        char text[80];
+        snprintf(text, sizeof(text), "激活码：%s", assistant.activation);
+        updateLabel(activation_, text);
+        lv_obj_remove_flag(activation_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(transcript_, LV_OBJ_FLAG_HIDDEN);
     } else {
-        snprintf(text, sizeof(text), "%s\n音量：%d%%\nCodex 完成提示音优先", music.message, shared_audio::volume());
-        updateLabel(status_, text);
-        snprintf(text, sizeof(text), "%s\n%s\n%lu:%02lu", music.song[0] ? music.song : "未选择歌曲", music.artist,
-            static_cast<unsigned long>(music.playback_ms / 60000), static_cast<unsigned long>(music.playback_ms / 1000 % 60));
-        updateLabel(transcript_, text);
+        lv_obj_add_flag(activation_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(transcript_, LV_OBJ_FLAG_HIDDEN);
+        updateLabel(transcript_, assistant.reply[0] ? assistant.reply : assistant.recognized);
     }
 }

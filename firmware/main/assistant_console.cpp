@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include "app_navigation.hpp"
 #include "assistant_service.hpp"
-#include "music_service.hpp"
 #include "system_service.hpp"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_console.h"
@@ -21,7 +20,7 @@ bool overflow;
 int command(int count, char **arguments)
 {
     if (count != 2) {
-        puts("Usage: xiaozhi status|connect|stop|open");
+        puts("Usage: xiaozhi status|connect|toggle|stop|open");
         return 1;
     }
     auto &assistant = AssistantService::instance();
@@ -36,40 +35,11 @@ int command(int count, char **arguments)
         return 0;
     }
     const bool result = strcmp(arguments[1], "connect") == 0 ? assistant.start() :
+        strcmp(arguments[1], "toggle") == 0 ? assistant.toggleChat() :
         strcmp(arguments[1], "stop") == 0 ? assistant.stop() :
         strcmp(arguments[1], "open") == 0 ? AppNavigation::request(AppTarget::Assistant) : false;
     printf("xiaozhi: command %s\n", result ? "accepted" : "rejected");
     return result ? 0 : 1;
-}
-
-int musicCommand(int count, char **arguments)
-{
-    auto &music = MusicService::instance();
-    if (count == 2 && strcmp(arguments[1], "status") == 0) {
-        const auto state = music.snapshot();
-        printf("music: state=%d playback_ms=%u song=%s artist=%s message=%s\n",
-            static_cast<int>(state.state), static_cast<unsigned>(state.playback_ms),
-            state.song, state.artist, state.message);
-        return 0;
-    }
-    if (count == 3 && strcmp(arguments[1], "config") == 0) {
-        auto config = AssistantService::instance().config();
-        if (strlen(arguments[2]) >= sizeof(config.music_url)) return 1;
-        strlcpy(config.music_url, arguments[2], sizeof(config.music_url));
-        const bool accepted = AssistantService::instance().saveConfig(config);
-        printf("music: configuration %s\n", accepted ? "queued" : "rejected");
-        return accepted ? 0 : 1;
-    }
-    if ((count == 3 || count == 4) && strcmp(arguments[1], "play") == 0) {
-        const bool accepted = music.play(arguments[2], count == 4 ? arguments[3] : "");
-        printf("music: play %s\n", accepted ? "accepted" : "rejected");
-        return accepted ? 0 : 1;
-    }
-    if (count == 2 && strcmp(arguments[1], "pause") == 0) { music.pause(); return 0; }
-    if (count == 2 && strcmp(arguments[1], "stop") == 0) { music.stop(); return 0; }
-    if (count == 2 && strcmp(arguments[1], "resume") == 0) return music.resume() ? 0 : 1;
-    puts("Usage: music status|config <base-url>|play <song> [artist]|pause|resume|stop");
-    return 1;
 }
 }
 
@@ -86,18 +56,12 @@ esp_err_t initialize()
     if (result != ESP_OK) return result;
     esp_console_cmd_t entry = {};
     entry.command = "xiaozhi";
-    entry.help = "Inspect assistant status, start/stop the connection or open its page";
+    entry.help = "Inspect assistant status, toggle the conversation or open its page";
     entry.func = command;
     result = esp_console_cmd_register(&entry);
-    if (result == ESP_OK) {
-        entry.command = "music";
-        entry.help = "Configure the PCM music bridge or control music playback";
-        entry.func = musicCommand;
-        result = esp_console_cmd_register(&entry);
-    }
     if (result == ESP_OK) result = esp_console_register_help_command();
     ready = result == ESP_OK;
-    if (ready) ESP_LOGI("xiaozhi", "USB diagnostics ready: xiaozhi status|connect|stop|open, help");
+    if (ready) ESP_LOGI("xiaozhi", "USB diagnostics ready: xiaozhi status|connect|toggle|stop|open, help");
     return result;
 }
 

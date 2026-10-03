@@ -10,7 +10,6 @@
 #include "audio_apps.hpp"
 #include "app_navigation.hpp"
 #include "assistant_service.hpp"
-#include "music_service.hpp"
 #include "shared_audio.hpp"
 #include "ui_assets.h"
 #include "dark/stylesheet.hpp"
@@ -26,7 +25,7 @@ Phone *phone;
 lv_obj_t *splash;
 lv_timer_t *status_timer;
 bool brightness_restored = false;
-int app_ids[4] = {-1, -1, -1, -1};
+int app_ids[3] = {-1, -1, -1};
 
 void navigateApps(lv_timer_t *)
 {
@@ -98,14 +97,11 @@ void startDesktop(lv_timer_t *timer)
         ESP_LOGE(TAG, "Fitness installation failed");
         delete fitness_app;
     }
-    for (auto kind : {AudioApp::Kind::Assistant, AudioApp::Kind::Music}) {
-        auto *app = new AudioApp(kind);
-        const int id = phone->installApp(app);
-        app_ids[static_cast<int>(kind == AudioApp::Kind::Assistant ? AppTarget::Assistant : AppTarget::Music)] = id;
-        if (id < esp_brookesia::systems::base::App::APP_ID_MIN) {
-            ESP_LOGE(TAG, "Audio app installation failed");
-            delete app;
-        }
+    auto *assistant_app = new AudioApp();
+    app_ids[static_cast<int>(AppTarget::Assistant)] = phone->installApp(assistant_app);
+    if (app_ids[static_cast<int>(AppTarget::Assistant)] < esp_brookesia::systems::base::App::APP_ID_MIN) {
+        ESP_LOGE(TAG, "Assistant installation failed");
+        delete assistant_app;
     }
     lv_timer_create(navigateApps, 50, nullptr);
     // Hide the unimplemented battery gauge instead of displaying an invented charge level.
@@ -137,7 +133,6 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(BluetoothService::instance().start());
     ESP_ERROR_CHECK(AppNavigation::initialize() ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(AssistantService::instance().initialize());
-    ESP_ERROR_CHECK(MusicService::instance().initialize());
     LvLock::registerCallbacks([](int timeout) { return bsp_display_lock(timeout) == ESP_OK; }, []() { bsp_display_unlock(); return true; });
     LvLockGuard guard;
     splash = lv_obj_create(nullptr);

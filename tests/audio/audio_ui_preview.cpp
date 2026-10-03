@@ -1,11 +1,7 @@
 #include "audio_apps.hpp"
-#include "app_navigation.hpp"
-#include "music_service.hpp"
-#include "shared_audio.hpp"
-#include "system_service.hpp"
 #include "ui_app_shell.hpp"
 #include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -16,16 +12,10 @@ uint16_t framebuffer[360 * 360];
 uint16_t pixels[360 * 360];
 AssistantService::Config configuration;
 AssistantService::Snapshot voice;
-MusicService::Snapshot music;
 unsigned start_calls = 0;
-unsigned listen_calls = 0;
-unsigned finish_calls = 0;
+unsigned stop_calls = 0;
+unsigned toggle_calls = 0;
 unsigned save_calls = 0;
-unsigned play_calls = 0;
-std::string played_song;
-std::string played_artist;
-AppTarget destination = AppTarget::Codex;
-bool online = true;
 void flush(lv_display_t *display, const lv_area_t *area, uint8_t *data)
 {
     auto *source = reinterpret_cast<uint16_t *>(data);
@@ -66,11 +56,14 @@ lv_obj_t *findLabel(lv_obj_t *parent, const char *text)
     }
     return nullptr;
 }
-void click(const char *text)
+lv_obj_t *findAvatar(lv_obj_t *parent)
 {
-    auto *button = findButton(lv_screen_active(), text);
-    assert(button);
-    lv_obj_send_event(button, LV_EVENT_CLICKED, nullptr);
+    for (uint32_t index = 0; index < lv_obj_get_child_count(parent); ++index) {
+        auto *child = lv_obj_get_child(parent, index);
+        if (lv_obj_check_type(child, &lv_image_class) && lv_obj_has_flag(child, LV_OBJ_FLAG_CLICKABLE)) return child;
+        if (auto *found = findAvatar(child)) return found;
+    }
+    return nullptr;
 }
 void save(const std::string &path)
 {
@@ -93,23 +86,14 @@ AssistantService::Config AssistantService::config() { return configuration; }
 AssistantService::Snapshot AssistantService::snapshot() { return voice; }
 bool AssistantService::saveConfig(const Config &value) { configuration = value; ++save_calls; return true; }
 bool AssistantService::start() { ++start_calls; return true; }
-bool AssistantService::stop() { return true; }
-bool AssistantService::listen() { ++listen_calls; return true; }
-bool AssistantService::finishListening() { ++finish_calls; return true; }
-MusicService &MusicService::instance() { static MusicService service; return service; }
-MusicService::Snapshot MusicService::snapshot() { return music; }
-bool MusicService::play(const char *song, const char *artist) { ++play_calls; played_song = song; played_artist = artist; return song[0]; }
-void MusicService::pause(bool return_to_assistant) { music.state = State::Paused; if (return_to_assistant) destination = AppTarget::Assistant; }
-bool MusicService::resume() { music.state = State::Playing; return true; }
-SystemService &SystemService::instance() { static SystemService service; return service; }
-SystemService::Snapshot SystemService::snapshot() { Snapshot result; result.ready = true; result.state = online ? NetworkState::Connected : NetworkState::Offline; return result; }
-const char *SystemService::stateText(NetworkState state) { return state == NetworkState::Connected ? "已连接" : "未连接"; }
-bool AppNavigation::request(AppTarget target) { destination = target; return true; }
-int shared_audio::volume() { return 60; }
+bool AssistantService::stop() { ++stop_calls; return true; }
+bool AssistantService::toggleChat() { ++toggle_calls; return true; }
 
 int main(int count, char **arguments)
 {
     assert(count == 2);
+    static_assert(offsetof(AssistantService::Config, volume) == 1280);
+    strlcpy(configuration.reserved_music_url, "http://saved-host/music", sizeof(configuration.reserved_music_url));
     const std::string output = arguments[1];
     lv_init();
     auto *display = lv_display_create(360, 360);
@@ -117,67 +101,101 @@ int main(int count, char **arguments)
     lv_display_set_buffers(display, framebuffer, nullptr, sizeof(framebuffer), LV_DISPLAY_RENDER_MODE_FULL);
     lv_display_set_flush_cb(display, flush);
     auto *screen = lv_screen_active();
-    for (int cycle = 0; cycle < 100; ++cycle) {
-        AudioApp assistant(AudioApp::Kind::Assistant);
-        strlcpy(voice.recognized, "打开 Codex Micro", sizeof(voice.recognized));
-        strlcpy(voice.reply, "可以打开工具，也可以播放或暂停音乐。", sizeof(voice.reply));
+    for (unsigned cycle = 0; cycle < 100; ++cycle) {
+        AudioApp assistant;
+        voice = {};
+        voice.connected = true;
+        voice.listening = true;
+        strlcpy(voice.recognized, "你好，小智", sizeof(voice.recognized));
         assert(assistant.run());
-        click("开始对话");
+        assert(start_calls == cycle + 1);
+        auto *avatar = findAvatar(screen);
+        assert(avatar);
+        for (const char *removed : {"开始对话", "打断并聆听", "说完了", "停止小智", "共享设置", "播放"}) assert(!findButton(screen, removed));
+        assert(!findInput(screen, "歌名"));
+        lv_obj_send_event(avatar, LV_EVENT_CLICKED, nullptr);
+        assert(toggle_calls == cycle * 2 + 1);
         preview_boot_pressed = true;
         advance();
+        advance();
+        assert(toggle_calls == cycle * 2 + 1);
         preview_boot_pressed = false;
         advance();
-        click("共享设置");
-        assert(destination == AppTarget::Settings);
-        if (cycle == 0) save(output + "/assistant.ppm");
-        assert(assistant.close());
-        lv_obj_clean(screen);
-        AudioApp player(AudioApp::Kind::Music);
-        music.state = MusicService::State::Playing;
-        strlcpy(music.song, "测试歌曲", sizeof(music.song));
-        strlcpy(music.message, "正在播放，小智后台聆听暂停命令", sizeof(music.message));
-        assert(player.run());
-        auto *song = findInput(screen, "歌名");
-        auto *artist = findInput(screen, "歌手（可留空）");
-        assert(song && artist);
-        lv_textarea_set_text(song, "bad guy");
-        lv_textarea_set_text(artist, "Billie Eilish");
-        click("播放");
-        assert(played_song == "bad guy" && played_artist == "Billie Eilish");
-        if (cycle == 0) save(output + "/music.ppm");
+        assert(toggle_calls == cycle * 2 + 2);
+        assert(findLabel(screen, "正在聆听"));
+        assert(findLabel(screen, "你好，小智"));
+        voice.listening = false;
+        voice.speaking = true;
+        strlcpy(voice.reply, "你好，我是小智。", sizeof(voice.reply));
+        advance();
+        assert(findLabel(screen, "正在说话"));
+        assert(findLabel(screen, "你好，我是小智。"));
+        assert(!findLabel(screen, "你好，小智"));
         if (cycle == 0) {
-            advance();
-            auto *status = findLabel(screen, "正在播放，小智后台聆听暂停命令\n音量：60%\nCodex 完成提示音优先");
-            assert(status);
+            lv_obj_set_style_pad_bottom(screen, 96, 0);
+            lv_obj_update_layout(screen);
+            auto *hint = findLabel(screen, "点头像 / BOOT 切换对话");
+            lv_area_t hint_area;
+            lv_obj_get_coords(hint, &hint_area);
+            assert(hint_area.y2 < 264);
+            lv_obj_set_style_pad_bottom(screen, 60, 0);
+            save(output + "/assistant.ppm");
+            auto *status = findLabel(screen, "正在说话");
             const char *unchanged = lv_label_get_text(status);
             lv_mem_monitor_t before = {};
             lv_mem_monitor(&before);
-            for (int tick = 0; tick < 10000; ++tick) advance();
+            for (unsigned tick = 0; tick < 10000; ++tick) advance();
             assert(lv_label_get_text(status) == unchanged);
             lv_mem_monitor_t after = {};
             lv_mem_monitor(&after);
             assert(after.free_size + 1024 >= before.free_size && lv_mem_test() == LV_RESULT_OK);
+            auto *other_screen = lv_obj_create(nullptr);
+            lv_screen_load(other_screen);
+            strlcpy(voice.reply, "后台不更新页面", sizeof(voice.reply));
+            advance();
+            assert(findLabel(screen, "你好，我是小智。"));
+            lv_screen_load(screen);
+            advance();
+            assert(findLabel(screen, "后台不更新页面"));
+            lv_obj_delete(other_screen);
+            strlcpy(voice.activation, "123456", sizeof(voice.activation));
+            voice.listening = voice.speaking = false;
+            strlcpy(voice.message, "请绑定设备", sizeof(voice.message));
+            advance();
+            auto *code = findLabel(screen, "激活码：123456");
+            assert(code && !lv_obj_has_flag(code, LV_OBJ_FLAG_HIDDEN));
+            assert(lv_obj_has_flag(findLabel(screen, "后台不更新页面"), LV_OBJ_FLAG_HIDDEN));
+            save(output + "/activation.ppm");
         }
-        click("暂停并返回小智");
-        assert(destination == AppTarget::Assistant && music.state == MusicService::State::Paused);
-        assert(player.close());
-        lv_obj_clean(screen);
-        const auto shell = createLauncherAppShell(screen, "设置");
-        buildSharedAudioSettings(shell.body);
-        click("保存助手设置");
-        assert(save_calls == static_cast<unsigned>(cycle + 1));
+        assert(assistant.close());
+        assert(assistant.close());
+        assert(stop_calls == cycle + 1);
         lv_obj_clean(screen);
         advance();
-        online = !online;
+        assert(toggle_calls == cycle * 2 + 2);
+        auto shell = createLauncherAppShell(screen, "共享设置");
+        buildSharedAudioSettings(shell.body);
+        auto *ota = findInput(screen, "https://.../ota/");
+        assert(ota && !findInput(screen, "http://电脑IP:端口/music"));
+        lv_textarea_set_text(ota, "https://example.com/ota/");
+        auto *save_button = findButton(screen, "保存助手设置");
+        assert(save_button);
+        lv_obj_send_event(save_button, LV_EVENT_CLICKED, nullptr);
+        assert(strcmp(configuration.ota_url, "https://example.com/ota/") == 0);
+        assert(strcmp(configuration.reserved_music_url, "http://saved-host/music") == 0);
+        assert(save_calls == cycle + 1);
+        lv_obj_clean(screen);
+        assert(lv_mem_test() == LV_RESULT_OK);
     }
-    assert(start_calls == 100 && listen_calls == 100 && finish_calls == 100 && play_calls == 100);
-    auto *temporary = lv_obj_create(nullptr);
-    lv_screen_load(temporary);
-    AudioApp deleted_player(AudioApp::Kind::Music);
-    assert(deleted_player.run());
-    lv_screen_load(screen);
-    lv_obj_delete(temporary);
+    AudioApp destroyed;
+    assert(destroyed.run());
+    auto *replacement = lv_obj_create(nullptr);
+    lv_screen_load(replacement);
+    lv_obj_delete(screen);
     advance();
-    assert(deleted_player.close());
-    puts("PASS: manual song/artist playback dispatch, 10000 idle refreshes, memory integrity, screen deletion and 100 cleanup cycles");
+    assert(destroyed.close());
+    assert(stop_calls == 101);
+    assert(toggle_calls == 200);
+    assert(lv_mem_test() == LV_RESULT_OK);
+    puts("PASS: 100 assistant/settings lifecycles, single-toggle UI, saved config compatibility and 10000 idle refreshes");
 }
