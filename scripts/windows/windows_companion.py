@@ -1052,6 +1052,7 @@ def run_ps_bridge(source: str, timeout: float) -> BleResult:
     try:
         completed = subprocess.run(
             arguments,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
             capture_output=True,
             timeout=timeout,
             check=False,

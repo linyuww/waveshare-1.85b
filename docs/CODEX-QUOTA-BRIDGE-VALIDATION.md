@@ -27,3 +27,11 @@ python -m py_compile scripts/windows/windows_companion.py tests/test_windows_com
 25 项 Python 测试通过，包括网桥二进制与源码校验。PowerShell 启动脚本解析检查通过。
 
 Rust 源码构建尝试因本机缺少 MSVC `link.exe` 失败，Rust 测试没有运行。本次采用完整复制并校验的既有 Windows 程序，运行结论来自真实重启和 BLE 写入，不将预编译程序运行成功等同于源码构建成功。
+# 静默后台补充验证（2026-10-03）
+
+- 新增 `background.ps1` 和 `background_companion.py`：当前用户登录计划任务、pythonw 隐藏托管、进程互斥、停止进程树和禁用入口。
+- 两次后台启动后，仅存在一份本项目 pythonw 主进程；PowerShell、Python 和网桥进程窗口句柄均为 0。
+- 已实际执行停止后重新启动；新网桥 `/ready` 正常，BLE 日志出现 `write_result=Success` 和 `write_ack=Success`。
+- 27 项 companion Python 单元测试通过，PowerShell 管理脚本语法检查通过。
+- 本机旧 `Codex Ornament Bridge` 任务已备份并禁用。旧 `CodexMicroAllowanceCompanion` 任务的注销和禁用均被系统拒绝访问，仍指向旧目录。因此当前仅验证本次会话静默运行，不能声称新的登录自启动已生效，也未执行整机重启验证。
+- 完成迁移需在管理员 PowerShell 7 中运行 `./scripts/companion/background.ps1 -Action Install -MigrateLegacy`；任务运行权限仍为 Limited。之后用普通 PowerShell 执行 `-Action Start`。

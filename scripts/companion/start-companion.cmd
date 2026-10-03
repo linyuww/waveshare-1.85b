@@ -4,7 +4,8 @@ rem ASCII only: cmd.exe reads this file in the OEM code page, so non-ASCII
 rem text here would garble. All user-facing prose lives in the .ps1 files.
 
 setlocal
-set "SCRIPT=%~dp0start-companion.ps1"
+set "SCRIPT=%~dp0background.ps1"
+if not "%~1"=="" set "SCRIPT=%~dp0start-companion.ps1"
 
 set "PWSH=%ProgramFiles%\PowerShell\7\pwsh.exe"
 if not exist "%PWSH%" set "PWSH="
