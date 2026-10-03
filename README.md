@@ -10,6 +10,13 @@
 
 ## 编译与烧录
 
+不想自己编译时，可直接从 [最新 Release](https://github.com/linyuww/waveshare-1.85b/releases/latest) 下载已验证固件：
+
+- `waveshare-launcher-usb.bin` 是完整镜像，使用 Flash Download Tool 烧录到 `0x0`；适合全新安装，但会重置 Wi-Fi、蓝牙配对和设备设置。
+- `waveshare_launcher.bin` 是应用分区镜像，烧录到 `0x10000`；适合从本项目旧版本升级，并保留 NVS 设置。
+
+如需修改源码，再按以下方式本地构建。
+
 准备 Windows、Python 和 Docker Desktop（Linux 容器），USB 连接开发板后，在项目根目录运行：
 
 ```powershell
