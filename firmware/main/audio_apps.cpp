@@ -123,28 +123,44 @@ bool AudioApp::run()
     lv_obj_set_height(transcript_, 0);
     lv_obj_set_flex_grow(transcript_, 1);
     lv_label_set_long_mode(transcript_, LV_LABEL_LONG_DOT);
-    hint_ = label(shell.body, "点头像 / BOOT 切换对话");
+    hint_ = label(shell.body, "点头像切换 / BOOT 按住说话");
     lv_obj_set_style_text_color(hint_, lv_color_hex(0xAAB9CB), 0);
     gpio_config_t button_config = {};
     button_config.pin_bit_mask = 1ULL << GPIO_NUM_0;
     button_config.mode = GPIO_MODE_INPUT;
     button_config.pull_up_en = GPIO_PULLUP_ENABLE;
-    gpio_config(&button_config);
-    boot_pressed_ = gpio_get_level(GPIO_NUM_0) == 0;
-    timer_ = lv_timer_create(onTimer, 100, this);
+    ESP_ERROR_CHECK(gpio_config(&button_config));
+    timer_ = lv_timer_create(onTimer, 50, this);
+    resume();
     if (!AssistantService::instance().start()) updateLabel(status_, "暂时无法开始，请点击重试");
     return true;
 }
 bool AudioApp::back() { return notifyCoreClosed(); }
+bool AudioApp::pause()
+{
+    active_ = false;
+    if (timer_) lv_timer_pause(timer_);
+    if (boot_session_) {
+        AssistantService::instance().finishBootListening(boot_session_);
+        boot_session_ = 0;
+    }
+    return true;
+}
+bool AudioApp::resume()
+{
+    if (!timer_ || !root_) return true;
+    active_ = true;
+    boot_.reset(gpio_get_level(GPIO_NUM_0) == 0, lv_tick_get());
+    lv_timer_resume(timer_);
+    return true;
+}
 bool AudioApp::close()
 {
-    const bool was_open = root_ || timer_;
+    pause();
     if (root_) lv_obj_remove_event_cb_with_user_data(root_, onRootDeleted, this);
     if (timer_) lv_timer_delete(timer_);
     timer_ = nullptr;
     root_ = status_ = transcript_ = activation_ = hint_ = nullptr;
-    boot_pressed_ = false;
-    if (was_open) AssistantService::instance().stop();
     return true;
 }
 void AudioApp::onRootDeleted(lv_event_t *event)
@@ -161,16 +177,24 @@ void AudioApp::onHome(lv_event_t *event)
 void AudioApp::onToggle(lv_event_t *event)
 {
     auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
+    if (!self->active_ || self->root_ != lv_screen_active()) return;
     if (!AssistantService::instance().toggleChat()) updateLabel(self->status_, "操作未受理，请稍后重试");
 }
 void AudioApp::onTimer(lv_timer_t *timer)
 {
     auto *self = static_cast<AudioApp *>(lv_timer_get_user_data(timer));
-    if (!self->root_ || !self->status_ || !self->transcript_ || self->root_ != lv_screen_active()) return;
-    const bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
-    if (!pressed && self->boot_pressed_) AssistantService::instance().toggleChat();
-    self->boot_pressed_ = pressed;
+    if (!self->active_ || !self->root_ || !self->status_ || !self->transcript_) return;
+    if (self->root_ != lv_screen_active()) { self->pause(); return; }
+    const auto edge = self->boot_.update(gpio_get_level(GPIO_NUM_0) == 0, lv_tick_get());
+    if (edge == BootButton::Edge::Press)
+        self->boot_session_ = AssistantService::instance().beginBootListening();
+    if (edge == BootButton::Edge::Release && self->boot_session_) {
+        AssistantService::instance().finishBootListening(self->boot_session_);
+        self->boot_session_ = 0;
+    }
     self->refresh();
+    if (self->boot_.pressed() && !self->boot_session_)
+        updateLabel(self->status_, "操作未受理，请松开后重试");
 }
 void AudioApp::refresh()
 {

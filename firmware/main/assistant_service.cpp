@@ -89,6 +89,20 @@ bool AssistantService::enqueue(Action action, int volume)
 bool AssistantService::start() { return enqueue(Action::Start); }
 bool AssistantService::stop() { return enqueue(Action::Stop); }
 bool AssistantService::toggleChat() { return enqueue(Action::Toggle); }
+uint32_t AssistantService::beginBootListening()
+{
+    const uint32_t session = boot_recording_.next();
+    Command command{Action::BootListen, 0, session};
+    return commands_ && xQueueSend(commands_, &command, 0) == pdTRUE ? session : 0;
+}
+void AssistantService::finishBootListening(uint32_t session) { boot_recording_.finish(session); }
+void AssistantService::finishBootRecording()
+{
+    // An abort waits for tts/stop before starting the owned recording.
+    if (!hello_ || aborted_ || !boot_recording_.takeFinish()) return;
+    if (!sendListen("stop")) receive_failed_ = true;
+    listening_ = false;
+}
 bool AssistantService::setVolume(int percent) { return percent >= 0 && percent <= 100 && enqueue(Action::Volume, percent); }
 bool AssistantService::saveConfig(const Config &value)
 {
@@ -235,6 +249,7 @@ esp_err_t AssistantService::connect()
 
 void AssistantService::disconnect()
 {
+    boot_recording_.cancel();
     if (socket_) {
         esp_websocket_client_stop(socket_);
         esp_websocket_client_destroy(socket_);
@@ -354,8 +369,8 @@ void AssistantService::handleText(const char *text)
     } else if (strcmp(type, "tts") == 0) {
         const char *state = audio_http::string(root, "state");
         if (strcmp(state, "start") == 0) {
+            if (!aborted_) boot_recording_.cancel();
             speaking_ = true;
-            aborted_ = false;
             listening_ = false;
             speech_deadline_ = esp_timer_get_time() + 30000000;
             shared_audio::prioritize(shared_audio::Source::Assistant, true);
@@ -442,6 +457,7 @@ void AssistantService::worker()
     if (console_result != ESP_OK) ESP_LOGW(TAG, "USB diagnostics unavailable: %s", esp_err_to_name(console_result));
     while (true) {
         assistant_console::poll();
+        finishBootRecording();
         Command command;
         if (xQueueReceive(commands_, &command, pdMS_TO_TICKS(10)) == pdTRUE) {
             if (command.action == Action::Toggle) {
@@ -450,6 +466,9 @@ void AssistantService::worker()
                 command.action = action == xiaozhi_protocol::ChatAction::Stop ? Action::Stop :
                     action == xiaozhi_protocol::ChatAction::Connect ? Action::Start : Action::Listen;
             }
+            if (command.action == Action::BootListen && !boot_recording_.claim(command.boot_session)) continue;
+            if (command.action == Action::Start || command.action == Action::Stop || command.action == Action::Listen)
+                boot_recording_.cancel();
             if (command.action == Action::Start) {
                 disconnect();
                 receive_failed_ = false;
@@ -458,7 +477,7 @@ void AssistantService::worker()
             } else if (command.action == Action::Stop) {
                 disconnect();
                 setMessage("点击开始对话");
-            } else if (command.action == Action::Listen) {
+            } else if (command.action == Action::Listen || command.action == Action::BootListen) {
                 if (hello_) {
                     if (speaking_) {
                         aborted_ = true;
@@ -470,11 +489,13 @@ void AssistantService::worker()
                     } else {
                         speech_deadline_ = 0;
                         listening_ = sendListen("start");
+                        if (!listening_) receive_failed_ = true;
                     }
                 } else {
                     disconnect();
                     receive_failed_ = false;
                     connect();
+                    if (command.action == Action::BootListen) boot_recording_.restore(command.boot_session);
                 }
             } else if (command.action == Action::Save) {
                 const auto value = config();
@@ -514,6 +535,7 @@ void AssistantService::worker()
             disconnect();
             setMessage("连接已断开，点击重连");
         }
+        finishBootRecording();
         capture();
         { Lock lock(mutex_); status_.listening = listening_; status_.speaking = speaking_; }
     }

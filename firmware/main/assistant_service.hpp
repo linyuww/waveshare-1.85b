@@ -8,6 +8,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "opus.h"
+#include "boot_recording.hpp"
 
 class AssistantService {
 public:
@@ -36,12 +37,14 @@ public:
     bool start();
     bool stop();
     bool toggleChat();
+    uint32_t beginBootListening();
+    void finishBootListening(uint32_t session);
     bool setVolume(int percent);
     bool invokeTool(const char *name, const cJSON *arguments, std::string &message);
 
 private:
-    enum class Action { Start, Stop, Listen, Toggle, Save, Volume };
-    struct Command { Action action; int volume = 0; };
+    enum class Action { Start, Stop, Listen, Toggle, Save, Volume, BootListen };
+    struct Command { Action action; int volume = 0; uint32_t boot_session = 0; };
     struct Packet { int opcode; size_t length; char *data; };
     static void workerEntry(void *context);
     static void websocketEvent(void *context, esp_event_base_t base, int32_t id, void *event);
@@ -57,6 +60,8 @@ private:
     void handleText(const char *text);
     void handleAudio(const char *data, size_t length);
     void capture();
+    void finishBootRecording();
+    BootRecording boot_recording_;
     SemaphoreHandle_t mutex_ = nullptr;
     QueueHandle_t commands_ = nullptr;
     QueueHandle_t packets_ = nullptr;

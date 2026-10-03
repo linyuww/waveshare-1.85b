@@ -18,7 +18,7 @@
 1. 在桌面「设置」连接 Wi-Fi；小智使用现有 `SystemService` 网络，不再配一份 Wi-Fi。
 2. 同页的「AI 助手与共享音频」可配置激活服务、可选自建 WebSocket/令牌和共享音量。默认激活地址为 `https://api.tenclass.net/xiaozhi/ota/`。
 3. 打开「小智助手」，自动连接并进入自动断句的聆听模式。正常说话即可，不必按「说完了」。
-4. 点头像或短按 BOOT 的动作相同：
+4. 点头像切换对话：
 
 | 当前状态 | 单击结果 |
 | --- | --- |
@@ -27,7 +27,7 @@
 | 正在聆听 | 结束当前对话、关闭音频连接 |
 | 小智正在说话 | 发送 abort，停止当前回复并恢复聆听 |
 
-收到服务端 `tts/stop` 后自动恢复聆听。打断时按上游的 `aborted_` 逻辑丢弃剩余回复音频，等待服务端结束当前回复再收音，避免自行抢先启动下一轮。BOOT 不再是按住说话、松开发送的 PTT 模式。返回桌面关闭助手时也停止语音连接和收音；Codex Micro 的蓝牙额度同步与提示音保持独立。
+收到服务端 `tts/stop` 后自动恢复聆听。打断时按上游的 `aborted_` 逻辑丢弃剩余回复音频，等待服务端结束当前回复再收音，避免自行抢先启动下一轮。BOOT 仅在小智前台按住说话、松开发送，保留现有 WebSocket v1 与自动断句协议。暂停、返回桌面或切换应用时，只结束本次 BOOT 操作拥有的录音，不关闭头像/控制台启动的后台会话；服务端自动结束该轮时也释放其归属。进入时已按住 BOOT，必须先松开再按下。连接或打断尚未完成就松开时，已开始的操作在通道就绪后结束；尚未执行的按下请求直接丢弃。Codex Micro 的蓝牙额度同步与提示音保持独立。
 
 服务端要求绑定时，六位激活码单独显示在头像下方。在小智账户的设备激活页面完成绑定，再点头像重连。正常 hello 没有返回激活码时不会编造一个验证码，这也不能单独证明设备属于哪个账户。自建服务填写地址后保存，关闭再打开助手生效；非 TLS 的 `ws://` / `http://` 仅用于可信局域网。
 
@@ -60,7 +60,7 @@ USB 串口支持 `xiaozhi status|connect|toggle|stop|open` 和 `help`。例如�
 
 状态日志不输出令牌或 Wi-Fi 密码。已保留的小写 Device-Id 修复、64 KiB Opus 栈修复和收音/播音切换修复不回退；历史记录见 `logs/assistant-connect-verified-status.log` 和 `logs/assistant-stack-fixed.log`。
 
-宿主测试运行实际 MCP 分发器、共享音频与 HTTP 辅助逻辑，覆盖四个工具、移除音乐工具、输入校验、提示音抢占、原版式单键状态转换与设备身份。UI 测试编译实际 `audio_apps.cpp`、图标和中文字库，验证 100 次助手/设置开关、BOOT 仅单击一次、激活码展示、配置布局兼容、页面销毁，以及 10000 次无变化刷新。
+宿主测试运行实际 MCP 分发器、共享音频与 HTTP 辅助逻辑，覆盖四个工具、移除音乐工具、输入校验、提示音抢占、原版式单键状态转换与设备身份。UI 测试编译实际 `audio_apps.cpp`、图标和中文字库，验证 100 次助手/设置开关、BOOT 按住/释放与前台切换、激活码展示、配置布局兼容、页面销毁，以及 10000 次无变化刷新。
 
 ```powershell
 docker run --rm --mount "type=bind,source=$($PWD.Path),target=/workspace" -w /workspace espressif/idf:v5.5.3 bash -c "cmake -S tests/audio -B .cache/audio-tests && cmake --build .cache/audio-tests && ctest --test-dir .cache/audio-tests --output-on-failure"
