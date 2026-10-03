@@ -1,0 +1,11 @@
+vendor/
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+dist/
+.cache/
+node_modules/
+__pycache__/
+*.pyc
+logs/

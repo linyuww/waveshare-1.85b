@@ -1,0 +1,26 @@
+{
+  "source": "C:\\Users\\86147\\Documents\\Codex\\2026-09-16\\https-github-com-digitsisyph-codex-micro\\work\\codex-micro-1.85b",
+  "head": "76018f792796322d25b62fd86db1a9a84d8327b7",
+  "files": {
+    "Backgrounds.h": "a7ce9c05551ce14a0991d1c4372ef8d0120feb075542b2d3d4d2f977c2b8ab12",
+    "battery.cpp": "66248ac40d945fef5d571b474c902a418261b1897bf619b4aeb52f5c8bec34b3",
+    "battery.h": "de3289824f6259f2fe93256dcc96225260b8ee3eff57b2c5a1a02ae979c82f3a",
+    "BatteryIcons.h": "4642b6eac74a1da5adb660c23d08ea4115e9b34165d605c3beda7feabb5470f5",
+    "battery_logic.h": "94b55338aedede551e38a89f4a48405188177010c13ce8be353a48f597e07edb",
+    "board_config.h": "b7cb90a8bc8feda4787fa3967fe082b7c84f9750ad5158660518a45bb4fd1770",
+    "board_i2c.cpp": "dd7d0ae466c341ff77c3d7f25aa4a8fccb0c4d4cdd19ceffef7a61e1070009cd",
+    "board_i2c.h": "110039ba70d98e7c3580058f6282050b0985631ef9a4606366c812f35f5e8c55",
+    "chime.cpp": "37d766b2f13f16518b608204c266fb0056f5b38212456772ffb9bb877f2016f7",
+    "chime.h": "d979ca44771e63ed1ffbb9a38acd226acc6a22b9138b123c66d87cec645239e5",
+    "codex_ble.cpp": "c3ef5fe3b3c257f37c31163899b0651ab0ad58dca7489dc87beb865b0b462061",
+    "codex_ble.h": "4a8396ad93fe45b35ae47bcfb1c14dd14c12dce5c77058c2e743363991cd7065",
+    "dashboard_ui.h": "25f589d9d343d5151c3277b83d5b0fb97bd83a16acc8730e4fdc48892930c61f",
+    "gfx.cpp": "1fffc96c477fe8bee63788c5d9bc67dd83c23a21b5bfe56e86a98aa8a51e5f75",
+    "gfx.h": "d30f3354130feef90b9750b1dc9b82ee58324fb8fb79c8e6d912fcf99194d094",
+    "IconTextures.h": "f03824436f29e0095d251faba86a3ce7378a8680911b28c14b180ecd40cacd04",
+    "logic.h": "d1128228df849fa82777acfb363b5c0506b94c814eafa01202fd1d7865091d4b",
+    "PixelFonts.h": "25725876a1ba1ce0dee50b9ef494999746a8609cc15bd6b87e40233bd8f14593",
+    "assets/bg_day.bin": "a0172c2a9009a56e98e8fd1ecb3bf3b2ab6a55af31d4a88a89b4f058da532871",
+    "assets/bg_night.bin": "d0c768adfbafe42500db6dd1f0541d811cbb0120b6c6a7a60b4dbe6234a49928"
+  }
+}
