@@ -34,7 +34,9 @@ function Get-CompanionConfig {
         WriteAttempts   = 4
         WriteTimeoutMs  = 12000
         PythonPath      = ''
-        CodexPath       = ''
+        BridgeUrl       = 'http://127.0.0.1:8787/quota'
+        BridgeMaxAgeSeconds = 180
+        AutoStartBridge = $true
     }
 
     $path = Join-Path $script:CompanionDir 'config.psd1'

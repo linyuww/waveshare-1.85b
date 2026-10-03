@@ -1,0 +1,8 @@
+{
+  "bind": "192.168.1.10",
+  "port": 8788,
+  "token": "replace-with-at-least-32-random-alphanumeric-characters",
+  "api_key": "replace-with-your-api-key",
+  "secret_key": "replace-with-your-secret-key",
+  "ffmpeg": "C:/Program Files/ffmpeg/bin/ffmpeg.exe"
+}

@@ -1,0 +1,114 @@
+[
+  {
+    "id": 0,
+    "file": "bench_press.gif",
+    "bytes": 25150,
+    "sha256": "e6353a25c040b72d885b25117ac741c033e078ac46394d6378e1e83196358838",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 1,
+    "file": "incline_press.gif",
+    "bytes": 26158,
+    "sha256": "7cb83317dfd78fe0334ce94f4c4c67f98994497084e3a7cf3942a21330b9a28d",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 2,
+    "file": "lat_pulldown.gif",
+    "bytes": 26003,
+    "sha256": "719e1deb34ccec7bdca144a5ef4f9a8baaf3739cda48e5d40c840ee401f96147",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 3,
+    "file": "seated_row.gif",
+    "bytes": 31132,
+    "sha256": "0c14d8aa2d6354a031a2d2dd658e358d6c41a12625f8428a8395191cf6c9526f",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 4,
+    "file": "shoulder_press.gif",
+    "bytes": 31762,
+    "sha256": "9d8353900319f8e76368ca95f74bfb53d770ad22b3499ae7967a8581040a7aad",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 5,
+    "file": "lateral_raise.gif",
+    "bytes": 28250,
+    "sha256": "668a9af0192287a253f409a21e025c0884be3a5139cc430fa99734e37ae8a9a0",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 6,
+    "file": "reverse_fly.gif",
+    "bytes": 31830,
+    "sha256": "7ed179d2bd04b2183b869282935aab0ad206a75fd1e72d27ab1de29f8c87a19f",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 7,
+    "file": "barbell_curl.gif",
+    "bytes": 23165,
+    "sha256": "53ae167bbd68e0d436641a7d795319de530977f64c66f1bae27dfece10f4b857",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 8,
+    "file": "cable_curl.gif",
+    "bytes": 26118,
+    "sha256": "553ca302f8ceb75661d7bafc7fa72350b8efe0657546b25c688ad721623bf91d",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 9,
+    "file": "triceps_pushdown.gif",
+    "bytes": 27007,
+    "sha256": "7107d66f3f8efaeaa25cf9a4a396d201c089d4526324d77eeec65975958d2e74",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 10,
+    "file": "squat.gif",
+    "bytes": 33373,
+    "sha256": "136d96fbd187cadb3316dd2fd8c3e122513615bc78ba4853f2a4079aa9913a26",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 11,
+    "file": "leg_extension.gif",
+    "bytes": 22710,
+    "sha256": "6fd0e1586e226277d7984523496cbbc660589b18ff28914b8ebf31bd53ba3f71",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 12,
+    "file": "leg_press.gif",
+    "bytes": 28241,
+    "sha256": "01bcd007ad96e3a0708cc139d2d6cf018d9d62191f35ce0674b54609ce5f847f",
+    "frames": 24,
+    "duration_ms": 2000
+  },
+  {
+    "id": 13,
+    "file": "crunch.gif",
+    "bytes": 26431,
+    "sha256": "ff42e7b17f3a35fdd679205a963f86bd8c4e65145dc15b1e0c89b3a866a28934",
+    "frames": 24,
+    "duration_ms": 2000
+  }
+]

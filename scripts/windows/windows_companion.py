@@ -5,8 +5,7 @@ This is the Windows port of the upstream macOS companion
 (`work/codex-micro-stopwatch/companion/Sources/CodexWatchCompanion/main.swift`).
 It performs exactly two jobs:
 
-1. Read the 5-hour and weekly Codex allowances from the local Codex App Server
-   over stdio (`initialize` -> `account/read` -> `account/rateLimits/read`),
+1. Read the 5-hour and weekly Codex allowances from the local ornament bridge
    and convert both windows into the project-owned snapshot schema.
 2. Write that snapshot to the private quota GATT characteristic on a *specific*
    board, addressed by its BLE address. Never by name matching, never by
@@ -22,9 +21,8 @@ Design constraints that are deliberate, not incidental:
   it inflates the ~13.5 KB bridge to ~36 KB and CreateProcess rejects a command
   line over 32767 characters with WinError 206. No non-ASCII path or payload
   can reach a ``.ps1``/``.bat`` file or a command line either way.
-* Credentials are never read, tokens are never logged, and no API key is
-  requested. Only the App Server's documented read methods are used; there are
-  no account write operations and no login changes.
+* This companion never reads credentials or requests an API key. The bundled
+  PC bridge owns authentication; only its quota snapshot crosses BLE.
 * GATT discovery asks for the *uncached* database, and a failed write is
   retried in a fresh session. Windows otherwise answers discovery from a
   per-device cache that survives re-pairing, which turns into AccessDenied /
@@ -40,13 +38,13 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -72,15 +70,8 @@ EVENT_MARKER = "@@CX@@"
 DEFAULT_INTERVAL_SECONDS = 60
 MIN_INTERVAL_SECONDS = 10
 
-#: Optional fast path: a local Codex quota service that already holds the
-#: allowance and answers instantly.
-#:
-#: The App Server path spawns a fresh `codex app-server` (a Node CLI) on every
-#: run and waits for it to boot, which is where the tens of seconds of "why do
-#: I always have to wait" went. A service that is already up and already knows
-#: the quota answers in milliseconds, so it is tried first and the App Server
-#: remains the fallback when nothing is listening.
 DEFAULT_BRIDGE_URL = "http://127.0.0.1:8787/quota"
+DEFAULT_BRIDGE_MAX_AGE_SECONDS = 180
 
 #: Keep this short. The bridge is a localhost HTTP call; if it is not there,
 #: failing fast matters more than waiting.
@@ -117,260 +108,6 @@ class CompanionError(Exception):
 
 
 # --------------------------------------------------------------------------
-# Codex App Server client (stdio JSON-RPC)
-# --------------------------------------------------------------------------
-
-
-def resolve_codex_path(explicit: str | None = None) -> str:
-    """Locate the local `codex` launcher without assuming a shell."""
-    if explicit:
-        candidate = os.path.abspath(explicit)
-        if not os.path.isfile(candidate):
-            raise CompanionError(f"--codex-path does not exist: {candidate}")
-        return candidate
-
-    found = shutil.which("codex")
-    if found:
-        return found
-
-    appdata = os.environ.get("APPDATA") or ""
-    localappdata = os.environ.get("LOCALAPPDATA") or ""
-    candidates = [
-        os.path.join(appdata, "npm", "codex.cmd"),
-        os.path.join(appdata, "npm", "codex.exe"),
-        os.path.join(localappdata, "Programs", "codex", "codex.exe"),
-    ]
-    for candidate in candidates:
-        if candidate and os.path.isfile(candidate):
-            return candidate
-
-    raise CompanionError(
-        "cannot find the `codex` CLI; pass --codex-path <path to codex.cmd>"
-    )
-
-
-class AppServerClient:
-    """Minimal stdio client for the Codex App Server.
-
-    Only documented read methods are exposed. Nothing here writes to the
-    account, and stderr is kept only as a bounded tail for error messages.
-    """
-
-    def __init__(self, codex_path: str, verbose: bool = False, timeout: float = 20.0):
-        self._verbose = verbose
-        self._timeout = timeout
-        self._lock = threading.Condition()
-        self._responses: dict[int, dict] = {}
-        self._stderr_tail = ""
-        self._next_id = 1
-        self._closed = False
-
-        self._log(f"starting app server: {codex_path} app-server --listen stdio://")
-        try:
-            self._proc = subprocess.Popen(
-                [codex_path, "app-server", "--listen", "stdio://"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0,
-                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-            )
-        except OSError as exc:
-            raise CompanionError(
-                f"failed to launch the Codex App Server ({codex_path}): {exc}"
-            ) from exc
-
-        threading.Thread(target=self._pump_stdout, daemon=True).start()
-        threading.Thread(target=self._pump_stderr, daemon=True).start()
-
-        self._request(
-            "initialize",
-            {
-                "clientInfo": {
-                    "name": "codex_micro_windows_companion",
-                    "title": "Codex Micro Windows Companion",
-                    "version": "0.1.0",
-                },
-                "capabilities": {
-                    "optOutNotificationMethods": [
-                        "item/agentMessage/delta",
-                        "item/reasoning/textDelta",
-                    ]
-                },
-            },
-            request_id=0,
-            timeout=15.0,
-        )
-        self._notify("initialized", {})
-
-    # -- lifecycle ---------------------------------------------------------
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            if self._proc.stdin:
-                self._proc.stdin.close()
-        except OSError:
-            pass
-        # The launcher on Windows is a .cmd wrapper, so the real node process is
-        # a grandchild. Kill the whole tree while the wrapper is still alive so
-        # the grandchild cannot be orphaned; this is scoped to our own PID.
-        if self._proc.poll() is None:
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=10,
-                    check=False,
-                )
-            except (OSError, subprocess.SubprocessError):
-                pass
-        try:
-            self._proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self._proc.kill()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-        for stream in (self._proc.stdout, self._proc.stderr):
-            try:
-                if stream is not None:
-                    stream.close()
-            except OSError:
-                pass
-
-    def __enter__(self) -> "AppServerClient":
-        return self
-
-    def __exit__(self, *_exc) -> None:
-        self.close()
-
-    # -- transport ---------------------------------------------------------
-
-    def _log(self, message: str) -> None:
-        if self._verbose:
-            print(f"[app-server] {message}", file=sys.stderr)
-
-    def _pump_stdout(self) -> None:
-        stream = self._proc.stdout
-        if stream is None:
-            return
-        for raw in iter(stream.readline, b""):
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                message = json.loads(line.decode("utf-8", "replace"))
-            except ValueError:
-                self._log(f"ignoring non-JSON line ({len(line)} bytes)")
-                continue
-            if not isinstance(message, dict):
-                continue
-            message_id = message.get("id")
-            if not isinstance(message_id, int):
-                continue  # notification, not a reply
-            with self._lock:
-                self._responses[message_id] = message
-                self._lock.notify_all()
-
-    def _pump_stderr(self) -> None:
-        stream = self._proc.stderr
-        if stream is None:
-            return
-        for raw in iter(stream.readline, b""):
-            text = raw.decode("utf-8", "replace").rstrip("\r\n")
-            if not text:
-                continue
-            with self._lock:
-                self._stderr_tail = (self._stderr_tail + "\n" + text)[-2000:]
-
-    def _write(self, payload: dict) -> None:
-        if self._proc.stdin is None or self._proc.poll() is not None:
-            raise CompanionError("the Codex App Server exited unexpectedly")
-        data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
-        try:
-            self._proc.stdin.write(data)
-            self._proc.stdin.flush()
-        except OSError as exc:
-            raise CompanionError(f"failed to write to the App Server: {exc}") from exc
-
-    def _notify(self, method: str, params: dict) -> None:
-        self._write({"method": method, "params": params})
-
-    def _wait(self, request_id: int, timeout: float) -> dict:
-        deadline = time.monotonic() + timeout
-        with self._lock:
-            while request_id not in self._responses:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                self._lock.wait(remaining)
-                if self._proc.poll() is not None and request_id not in self._responses:
-                    break
-            if request_id in self._responses:
-                return self._responses.pop(request_id)
-            tail = self._stderr_tail.strip()
-        detail = f" App Server stderr tail: {tail}" if tail else ""
-        raise CompanionError(
-            f"timed out after {timeout:.0f}s waiting for the App Server reply "
-            f"(id={request_id}).{detail}"
-        )
-
-    def _request(
-        self,
-        method: str,
-        params: dict,
-        request_id: int | None = None,
-        timeout: float | None = None,
-    ) -> dict:
-        if request_id is None:
-            request_id = self._next_id
-            self._next_id += 1
-        effective_timeout = self._timeout if timeout is None else timeout
-        self._write({"method": method, "id": request_id, "params": params})
-        return self._wait(request_id, effective_timeout)
-
-    # -- documented read methods ------------------------------------------
-
-    def read_account(self) -> dict:
-        """`account/read` -- plan/type only. The email is deliberately dropped."""
-        response = self._request("account/read", {})
-        result = self._unwrap(response, "account/read")
-        account = result.get("account")
-        if not isinstance(account, dict):
-            raise CompanionError(
-                "the Codex App Server reports no signed-in account; "
-                "sign in with the Codex CLI first"
-            )
-        return {
-            "type": account.get("type"),
-            "planType": account.get("planType"),
-            "requiresOpenaiAuth": result.get("requiresOpenaiAuth"),
-        }
-
-    def read_rate_limits(self) -> dict:
-        response = self._request("account/rateLimits/read", {})
-        return self._unwrap(response, "account/rateLimits/read")
-
-    @staticmethod
-    def _unwrap(response: dict, method: str) -> dict:
-        error = response.get("error")
-        if isinstance(error, dict):
-            message = error.get("message") or json.dumps(error)
-            raise CompanionError(f"{method} failed: {message}")
-        if error:
-            raise CompanionError(f"{method} failed: {error}")
-        result = response.get("result")
-        if not isinstance(result, dict):
-            raise CompanionError(f"{method} returned no result object")
-        return result
-
-
-# --------------------------------------------------------------------------
 # Quota selection (pure functions -- unit tested)
 # --------------------------------------------------------------------------
 
@@ -388,7 +125,7 @@ def select_codex_bucket(rate_limits_result: dict) -> dict:
         return legacy
 
     raise CompanionError(
-        "the App Server response contains no `codex` rate-limit bucket; "
+        "the quota response contains no `codex` rate-limit bucket; "
         "refusing to substitute a secondary bucket"
     )
 
@@ -483,19 +220,23 @@ def _tidy_number(value: float):
 
 
 # --------------------------------------------------------------------------
-# Optional local bridge fast path
+# Local quota bridge
 # --------------------------------------------------------------------------
 
 
 def _parse_iso_epoch(text: str) -> float:
-    """Epoch seconds for an ISO-8601 timestamp; naive input is read as local."""
-    parsed = datetime.fromisoformat(text)
+    """Epoch seconds for an explicitly timezone-qualified ISO-8601 timestamp."""
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
+        raise ValueError("timestamp has no timezone")
     return parsed.timestamp()
 
 
-def bridge_to_rate_limits(payload: dict) -> dict:
+def bridge_to_rate_limits(
+    payload: dict,
+    now: float | None = None,
+    max_age: float = DEFAULT_BRIDGE_MAX_AGE_SECONDS,
+) -> dict:
     """Reshape a local bridge's quota reply into App Server form.
 
     Converting into the App Server shape rather than straight into a snapshot
@@ -503,30 +244,73 @@ def bridge_to_rate_limits(payload: dict) -> dict:
     picks both windows by duration and never by slot name.
     """
     status = payload.get("status")
-    if status not in (None, "ok"):
+    if status != "ok":
         raise CompanionError(f"the bridge reports status={status!r}")
 
-    limit_id = payload.get("limitId") or "codex"
+    limit_id = payload.get("limitId")
+    if limit_id != "codex":
+        raise CompanionError("the bridge reply is not a `codex` rate-limit bucket")
+
+    captured_at = payload.get("capturedAt")
+    try:
+        captured_epoch = (
+            _parse_iso_epoch(captured_at) if isinstance(captured_at, str) else None
+        )
+    except (ValueError, OverflowError, OSError) as exc:
+        raise CompanionError("the bridge reply has an invalid `capturedAt`") from exc
+    if captured_epoch is None:
+        raise CompanionError("the bridge reply has no `capturedAt`; freshness is unknown")
+    age = (time.time() if now is None else now) - captured_epoch
+    if age < -60 or age > max_age:
+        raise CompanionError(
+            f"the bridge quota is stale or clock-skewed (age={age:.0f}s, max={max_age:g}s)"
+        )
+
     bucket: dict = {"limitId": limit_id}
     if payload.get("planType") is not None:
         bucket["planType"] = payload["planType"]
 
     for slot in ("primary", "secondary"):
         minutes = payload.get(f"{slot}WindowMinutes")
-        if not isinstance(minutes, (int, float)) or isinstance(minutes, bool):
+        if minutes is None:
             continue
+        if (
+            not isinstance(minutes, (int, float))
+            or isinstance(minutes, bool)
+            or minutes not in (FIVE_HOUR_WINDOW_MINUTES, WEEKLY_WINDOW_MINUTES)
+        ):
+            raise CompanionError(f"the bridge {slot} window has invalid duration")
         window: dict = {"windowDurationMins": int(minutes)}
 
         used = payload.get(f"{slot}UsedPercent")
-        if isinstance(used, (int, float)) and not isinstance(used, bool):
-            window["usedPercent"] = float(used)
+        if used is None:
+            remaining = payload.get(f"{slot}RemainingPercent")
+            if (
+                isinstance(remaining, (int, float))
+                and not isinstance(remaining, bool)
+                and 0 <= remaining <= 100
+                and math.isfinite(remaining)
+            ):
+                used = 100.0 - remaining
+        if (
+            not isinstance(used, (int, float))
+            or isinstance(used, bool)
+            or not 0 <= used <= 100
+            or not math.isfinite(used)
+        ):
+            raise CompanionError(f"the bridge {slot} window has invalid percentage")
+        window["usedPercent"] = float(used)
 
         resets = payload.get(f"{slot}ResetsAt")
         if isinstance(resets, str):
             try:
                 window["resetsAt"] = _parse_iso_epoch(resets)
-            except ValueError:
-                pass
+            except (ValueError, OverflowError, OSError) as exc:
+                raise CompanionError(
+                    f"the bridge {slot} window has invalid reset time"
+                ) from exc
+        if "resetsAt" not in window:
+            raise CompanionError(f"the bridge {slot} window has no reset time")
 
         bucket[slot] = window
 
@@ -535,22 +319,29 @@ def bridge_to_rate_limits(payload: dict) -> dict:
     return {"rateLimitsByLimitId": {limit_id: bucket}}
 
 
-def read_bridge_quota(url: str, timeout: float = BRIDGE_TIMEOUT_SECONDS) -> dict:
+def read_bridge_quota(
+    url: str,
+    timeout: float = BRIDGE_TIMEOUT_SECONDS,
+    max_age: float = DEFAULT_BRIDGE_MAX_AGE_SECONDS,
+) -> dict:
     """Fetch and reshape the bridge's quota reply, or raise CompanionError."""
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read(64 * 1024)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=timeout) as response:
+            body = response.read(64 * 1024 + 1)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise CompanionError(f"no quota service at {url}: {exc}") from exc
 
+    if len(body) > 64 * 1024:
+        raise CompanionError("the bridge quota reply exceeds 64 KiB")
     try:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError) as exc:
         raise CompanionError(f"{url} did not return JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise CompanionError(f"{url} returned {type(payload).__name__}, not an object")
-    return bridge_to_rate_limits(payload)
+    return bridge_to_rate_limits(payload, max_age=max_age)
 
 
 def public_snapshot(snapshot: dict) -> dict:
@@ -1261,6 +1052,7 @@ def run_ps_bridge(source: str, timeout: float) -> BleResult:
     try:
         completed = subprocess.run(
             arguments,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
             capture_output=True,
             timeout=timeout,
             check=False,
@@ -1301,7 +1093,6 @@ def run_ps_bridge(source: str, timeout: float) -> BleResult:
 
 class Options:
     def __init__(self) -> None:
-        self.codex_path: str | None = None
         self.json_only = False
         self.once = False
         self.watch = False
@@ -1313,14 +1104,15 @@ class Options:
         self.write_timeout_ms = DEFAULT_WRITE_TIMEOUT_MS
         self.repair_pairing = False
         self.hold_seconds = DEFAULT_PROBE_HOLD_SECONDS
-        self.bridge_url: str | None = DEFAULT_BRIDGE_URL
+        self.bridge_url = DEFAULT_BRIDGE_URL
+        self.bridge_max_age = DEFAULT_BRIDGE_MAX_AGE_SECONDS
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="windows_companion.py",
         description=(
-            "Read the weekly Codex allowance from the local Codex App Server and "
+            "Read Codex allowances from the local quota bridge and "
             "write it to a specific Codex Micro board over BLE (Windows port)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1332,7 +1124,6 @@ def build_parser() -> argparse.ArgumentParser:
             "  windows_companion.py --device-address 28:84:85:B2:1C:78 --watch --interval 60\n"
         ),
     )
-    parser.add_argument("--codex-path", help="path to the codex launcher (codex.cmd)")
     parser.add_argument(
         "--json-only",
         action="store_true",
@@ -1403,24 +1194,21 @@ def build_parser() -> argparse.ArgumentParser:
         "-v",
         "--verbose",
         action="store_true",
-        help="print App Server and BLE progress on stderr",
+        help="print quota source and BLE progress on stderr",
     )
     parser.add_argument(
         "--bridge-url",
         default=DEFAULT_BRIDGE_URL,
         help=(
-            "local quota service to try before spawning the App Server "
-            f"(default {DEFAULT_BRIDGE_URL}); it answers in milliseconds, "
-            "while the App Server has to boot a Node CLI first"
+            f"local ornament bridge quota endpoint (default {DEFAULT_BRIDGE_URL}); "
+            "bridge errors never silently fall back to the App Server"
         ),
     )
     parser.add_argument(
-        "--no-bridge",
-        action="store_true",
-        help=(
-            "never call the local quota service; always read the allowance "
-            "from the App Server"
-        ),
+        "--bridge-max-age",
+        type=int,
+        default=DEFAULT_BRIDGE_MAX_AGE_SECONDS,
+        help="maximum age in seconds of a bridge snapshot (default 180)",
     )
     return parser
 
@@ -1430,7 +1218,6 @@ def options_from_args(argv: list[str] | None = None) -> Options:
     namespace = parser.parse_args(argv)
 
     options = Options()
-    options.codex_path = namespace.codex_path
     options.json_only = namespace.json_only
     options.once = namespace.once
     options.watch = namespace.watch
@@ -1441,7 +1228,12 @@ def options_from_args(argv: list[str] | None = None) -> Options:
     options.write_attempts = namespace.write_attempts
     options.write_timeout_ms = namespace.write_timeout_ms
     options.repair_pairing = namespace.repair_pairing
-    options.bridge_url = None if namespace.no_bridge else (namespace.bridge_url or None)
+    options.bridge_url = namespace.bridge_url
+    options.bridge_max_age = namespace.bridge_max_age
+    if not namespace.bridge_url:
+        parser.error("--bridge-url cannot be empty")
+    if options.bridge_max_age <= 0:
+        parser.error("--bridge-max-age must be positive")
 
     if namespace.device_address:
         try:
@@ -1504,43 +1296,19 @@ def _validate(options: Options, parser: argparse.ArgumentParser) -> None:
 
 
 def read_snapshot(options: Options) -> dict:
-    # Fast path first. Spawning `codex app-server` is the slow part of every
-    # run, so an already-running local quota service is worth trying before it;
-    # if nothing answers, fall through to the App Server unchanged.
-    if options.bridge_url:
-        try:
-            rate_limits = read_bridge_quota(options.bridge_url)
-            snapshot = build_snapshot(rate_limits)
-        except CompanionError as exc:
-            if options.verbose:
-                print(f"[bridge] {exc}; falling back to the App Server",
-                      file=sys.stderr)
-        else:
-            if options.verbose:
-                source = snapshot["_source"]
-                print(
-                    "[bridge] Codex windows: 5h slot={five_hour[slot]} "
-                    "used={five_hour[used_percent]}%; weekly slot={weekly[slot]} "
-                    "used={weekly[used_percent]}% plan={plan_type}".format(**source),
-                    file=sys.stderr,
-                )
-            return snapshot
-
-    codex_path = resolve_codex_path(options.codex_path)
-    with AppServerClient(codex_path, verbose=options.verbose) as client:
-        account = client.read_account()
-        if options.verbose:
-            print(
-                f"[app-server] account type={account.get('type')} "
-                f"plan={account.get('planType')}",
-                file=sys.stderr,
-            )
-        rate_limits = client.read_rate_limits()
-    snapshot = build_snapshot(rate_limits)
+    try:
+        rate_limits = read_bridge_quota(
+            options.bridge_url, max_age=options.bridge_max_age
+        )
+        snapshot = build_snapshot(rate_limits)
+    except CompanionError as exc:
+        raise CompanionError(
+            f"{exc}; check the bundled PC bridge and logs/companion/bridge-stderr.log"
+        ) from exc
     if options.verbose:
         source = snapshot["_source"]
         print(
-            "[app-server] Codex windows: 5h slot={five_hour[slot]} "
+            "[bridge] Codex windows: 5h slot={five_hour[slot]} "
             "used={five_hour[used_percent]}%; weekly slot={weekly[slot]} "
             "used={weekly[used_percent]}% plan={plan_type}".format(**source),
             file=sys.stderr,

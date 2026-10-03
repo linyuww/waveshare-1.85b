@@ -12,6 +12,7 @@
 #include "ui_assets.h"
 #include "ui_app_shell.hpp"
 #include "battery_info.hpp"
+#include "audio_apps.hpp"
 
 namespace {
 constexpr uint32_t BG = 0x101923;
@@ -143,6 +144,7 @@ void LauncherApp::buildSettings(lv_obj_t *body)
     lv_obj_add_event_cb(slider, onBrightness, LV_EVENT_RELEASED, this);
     auto *hint = label(body, "配网成功后，所有应用共享网络。\n仅支持 2.4 GHz Wi-Fi。");
     lv_obj_set_style_text_color(hint, lv_color_hex(MUTED), 0);
+    buildSharedAudioSettings(body);
 }
 
 void LauncherApp::buildClock(lv_obj_t *body)

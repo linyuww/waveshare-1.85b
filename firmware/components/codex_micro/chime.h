@@ -13,8 +13,7 @@
 
 namespace chime {
 
-// Brings up I2S TX and the ES8311 codec. Returns ESP_OK only when both the I2S
-// channel and the codec answered; callers must treat failure as non-fatal.
+// Uses the shared BSP audio driver. Failure is non-fatal.
 esp_err_t init();
 
 bool ready();
@@ -23,7 +22,7 @@ bool ready();
 // (about 300 ms). Silently does nothing when the codec is unavailable.
 void playCompletion();
 
-// 0 disables playback without tearing the codec down.
+// Disables playback without tearing the shared codec down.
 void setEnabled(bool enabled);
 bool enabled();
 

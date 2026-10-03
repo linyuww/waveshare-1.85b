@@ -125,6 +125,7 @@ def _run(source: str, timeout: int) -> str:
     completed = subprocess.run(
         [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
          "-EncodedCommand", command],
+        creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
         capture_output=True,
         timeout=timeout,
         check=False,
