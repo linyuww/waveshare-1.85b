@@ -83,7 +83,7 @@ python -m pip install esptool
 3. 出现“已连接，所有应用共享网络”后返回桌面。
 4. 打开“时钟”等待校时；打开“网络测试”检查 HTTPS 请求。
 5. 应用内点击“返回”，或从屏幕底部上滑回桌面。应用可能保留在最近应用中，可在最近应用界面上滑关闭。
-6. 设置中开启蓝牙，在 Windows 中添加 **Codex Micro**；额度伴生程序入口是 `scripts/companion/start-companion.cmd`，也可继续使用原项目的伴生程序。
+6. 设置中开启蓝牙，在 Windows 中添加 **Codex Micro**；双击 `scripts/companion/start-companion.cmd` 自动启动本项目附带的网桥并持续同步额度，不再依赖原项目目录，配置及检查方式见 `scripts/companion/README.md`。
 7. 桌面左右滑动可找到 Codex Micro 图标。仪表盘顶部“桌面”按钮可返回。
 
 “忘记当前网络”需要连续点击两次确认。手机热点请设为 2.4 GHz；首版针对开放网络和常见个人密码 Wi-Fi，不支持需要网页登录的网络和企业证书配网。

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 7.4
 <#
 .SYNOPSIS
     Keep the Codex Micro board's allowance in sync, continuously.
@@ -81,7 +81,10 @@ else {
 }
 if ($config.WriteAttempts) { $baseArguments += @('--write-attempts', "$($config.WriteAttempts)") }
 if ($config.WriteTimeoutMs) { $baseArguments += @('--write-timeout-ms', "$($config.WriteTimeoutMs)") }
-if ($config.CodexPath) { $baseArguments += @('--codex-path', $config.CodexPath) }
+$baseArguments += @(
+    '--bridge-url', $config.BridgeUrl,
+    '--bridge-max-age', "$($config.BridgeMaxAgeSeconds)"
+)
 
 $logDirectory = $script:LogsDir
 New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
@@ -98,6 +101,7 @@ Write-Host '  Codex Micro allowance companion' -ForegroundColor Cyan
 Write-Host "    python  : $python"
 Write-Host "    board   : $(if ($config.DeviceAddress) { $config.DeviceAddress } else { 'auto-detect by name, every attempt' })"
 Write-Host "    mode    : $(if ($Probe) { 'probe only' } elseif ($Once) { 'single write' } else { "watch, every ${Interval}s" })"
+Write-Host "    quota   : $(if ($Probe) { 'not read' } else { $config.BridgeUrl })"
 Write-Host "    log     : $logFile"
 Write-Host ''
 Write-Host '  Press Ctrl+C to stop.' -ForegroundColor DarkGray
@@ -106,6 +110,19 @@ Write-Host ''
 $attempt = 0
 while ($true) {
     $attempt++
+
+    if (-not $Probe -and $config.AutoStartBridge) {
+        try {
+            & (Join-Path $PSScriptRoot 'start-bridge.ps1') -QuotaUrl $config.BridgeUrl
+        }
+        catch {
+            Write-Log "run #$attempt  bridge startup failed: $($_.Exception.Message)"
+            Write-Warn2 $_.Exception.Message
+            if ($Once -or $NoRestart) { exit 4 }
+            Start-Sleep -Seconds ([Math]::Min(15 * $attempt, 60))
+            continue
+        }
+    }
 
     # Re-resolved every attempt on purpose -- see the header comment.
     $address = Get-BoardAddress -Configured $config.DeviceAddress -Python $python

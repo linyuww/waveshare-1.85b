@@ -26,7 +26,7 @@
     # Explicit Python interpreter. Empty = resolve automatically.
     PythonPath = ''
 
-    # Path to codex.cmd if the Codex CLI is not on PATH. Empty = let the
-    # companion find it.
-    CodexPath = ''
+    BridgeUrl = 'http://127.0.0.1:8787/quota'
+    BridgeMaxAgeSeconds = 180
+    AutoStartBridge = $true
 }

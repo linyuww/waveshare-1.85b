@@ -12,7 +12,7 @@ if not defined PWSH for %%I in (pwsh.exe) do set "PWSH=%%~$PATH:I"
 
 if not defined PWSH (
   echo.
-  echo   PowerShell 7 is required but was not found.
+  echo   PowerShell 7.4 or newer is required but was not found.
   echo   Expected at: %ProgramFiles%\PowerShell\7\pwsh.exe
   echo.
   pause
