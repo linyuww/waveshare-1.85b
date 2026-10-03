@@ -154,22 +154,42 @@ bool AudioApp::run()
         button(shell.body, "继续播放", Resume);
         button(shell.body, "共享设置", Settings);
     }
-    timer_ = lv_timer_create(onTimer, 100, this);
+    timer_ = lv_timer_create(onTimer, 50, this);
+    resume();
     refresh();
     return true;
 }
 bool AudioApp::back() { return notifyCoreClosed(); }
+bool AudioApp::pause()
+{
+    active_ = false;
+    if (timer_) lv_timer_pause(timer_);
+    if (boot_session_) {
+        AssistantService::instance().finishBootListening(boot_session_);
+        boot_session_ = 0;
+    }
+    return true;
+}
+bool AudioApp::resume()
+{
+    if (!timer_ || !root_) return true;
+    active_ = true;
+    boot_.reset(gpio_get_level(GPIO_NUM_0) == 0, lv_tick_get());
+    lv_timer_resume(timer_);
+    return true;
+}
 bool AudioApp::close()
 {
+    pause();
     if (timer_) lv_timer_delete(timer_);
     timer_ = nullptr;
     root_ = status_ = transcript_ = song_ = artist_ = keyboard_ = nullptr;
-    boot_pressed_ = false;
     return true;
 }
 void AudioApp::onAction(lv_event_t *event)
 {
     auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
+    if (!self->active_ || self->root_ != lv_screen_active()) return;
     const int action = static_cast<int>(reinterpret_cast<intptr_t>(lv_obj_get_user_data(lv_event_get_target_obj(event))));
     auto &assistant = AssistantService::instance();
     bool result = true;
@@ -204,13 +224,21 @@ void AudioApp::onKeyboard(lv_event_t *event)
 void AudioApp::onTimer(lv_timer_t *timer)
 {
     auto *self = static_cast<AudioApp *>(lv_timer_get_user_data(timer));
-    if (self->kind_ == Kind::Assistant && self->root_ == lv_screen_active()) {
-        const bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
-        if (pressed && !self->boot_pressed_) AssistantService::instance().listen();
-        if (!pressed && self->boot_pressed_) AssistantService::instance().finishListening();
-        self->boot_pressed_ = pressed;
+    if (!self->active_ || !self->root_) return;
+    if (self->root_ != lv_screen_active()) { self->pause(); return; }
+    if (self->kind_ == Kind::Assistant) {
+        const auto edge = self->boot_.update(gpio_get_level(GPIO_NUM_0) == 0, lv_tick_get());
+        if (edge == BootButton::Edge::Press) {
+            self->boot_session_ = AssistantService::instance().beginBootListening();
+        }
+        if (edge == BootButton::Edge::Release && self->boot_session_) {
+            AssistantService::instance().finishBootListening(self->boot_session_);
+            self->boot_session_ = 0;
+        }
     }
     self->refresh();
+    if (self->kind_ == Kind::Assistant && self->boot_.pressed() && !self->boot_session_)
+        lv_label_set_text(self->status_, "操作未受理，请稍后重试");
 }
 void AudioApp::refresh()
 {

@@ -46,6 +46,8 @@ python -m pip install esptool==4.11.0
 
 使用额度表盘时，在设置中开启蓝牙，电脑配对 **Codex Micro**，再运行 `scripts/companion/start-companion.cmd`；脚本会自动启动仓库附带的本地额度网桥并持续同步。配置与诊断见 [伴生程序说明](scripts/companion/README.md)。
 
+BOOT 只控制当前显示的应用：Codex Micro 短按发送 Voice Chat，长按 700 毫秒发送 Mic，松开释放；小智助手按下说话，松开发送。桌面、音乐和其他应用不触发这些操作。按住 BOOT 切入应用时，先松开再按下才生效；小智录音期间离开页面会结束本次 BOOT 录音，Codex 离开时释放控制。
+
 小智、音乐桥接、本地 MCP 和音频优先级见 [AI 助手说明](docs/AI-ASSISTANT.md)；健身功能见 [健身说明](docs/FITNESS.md)。所有应用共用原有 Wi-Fi。音频优先级为 Codex 完成提示音 > 小智语音 > 音乐。
 
 ## 额度表盘

@@ -1,6 +1,7 @@
 #pragma once
 #include "esp_brookesia.hpp"
 #include "assistant_service.hpp"
+#include "boot_button.hpp"
 
 class AudioApp : public esp_brookesia::systems::phone::App {
 public:
@@ -9,6 +10,8 @@ public:
     bool run() override;
     bool back() override;
     bool close() override;
+    bool pause() override;
+    bool resume() override;
 private:
     static void onAction(lv_event_t *event);
     static void onFocus(lv_event_t *event);
@@ -24,7 +27,9 @@ private:
     lv_obj_t *artist_ = nullptr;
     lv_obj_t *keyboard_ = nullptr;
     lv_timer_t *timer_ = nullptr;
-    bool boot_pressed_ = false;
+    bool active_ = false;
+    BootButton boot_;
+    uint32_t boot_session_ = 0;
 };
 
 void buildSharedAudioSettings(lv_obj_t *body);
