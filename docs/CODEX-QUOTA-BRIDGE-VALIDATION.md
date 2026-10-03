@@ -35,3 +35,11 @@ Rust 源码构建尝试因本机缺少 MSVC `link.exe` 失败，Rust 测试没�
 - 27 项 companion Python 单元测试通过，PowerShell 管理脚本语法检查通过。
 - 本机旧 `Codex Ornament Bridge` 任务已备份并禁用。旧 `CodexMicroAllowanceCompanion` 任务的注销和禁用均被系统拒绝访问，仍指向旧目录。因此当前仅验证本次会话静默运行，不能声称新的登录自启动已生效，也未执行整机重启验证。
 - 完成迁移需在管理员 PowerShell 7 中运行 `./scripts/companion/background.ps1 -Action Install -MigrateLegacy`；任务运行权限仍为 Limited。之后用普通 PowerShell 执行 `-Action Start`。
+
+## 管理员迁移后复验（2026-10-03）
+
+用户执行管理员迁移后，已重新读取计划任务：入口为本项目 `background_companion.py`，使用 `C:\Python312\pythonw.exe`；当前用户登录触发，延迟 20 秒，Interactive/Limited 权限，无运行时长限制，重复实例 IgnoreNew。旧网桥任务 Disabled。
+
+停止本次会话原后台进程后，已通过普通用户执行 `background.ps1 -Action Start` 启动计划任务。任务状态 Running，新后台日志收到 BLE `write_result=Success`、`write_ack=Success`。持续运行任务的 LastTaskResult 为 267009（0x41301，正在运行），并非失败。未执行整机重启/重新登录验证。
+
+任务注册、启用、启动、停止和禁用现在显式使用 `-ErrorAction Stop`，避免操作被拒绝时继续输出成功提示；已启用任务不再做不必要的启用写操作。

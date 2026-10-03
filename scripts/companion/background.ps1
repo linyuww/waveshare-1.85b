@@ -38,7 +38,7 @@ if ($Action -eq 'Install' -or ($Action -eq 'Start' -and -not $task)) {
     $trigger.Delay = 'PT20S'
     $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet -Hidden -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-    Register-ScheduledTask -TaskName $taskName -TaskPath '\' -Action $taskAction -Trigger $trigger -Principal $principal -Settings $settings -Description 'Local quota bridge and BLE sync; hidden, current-user logon.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $taskName -TaskPath '\' -Action $taskAction -Trigger $trigger -Principal $principal -Settings $settings -Description 'Local quota bridge and BLE sync; hidden, current-user logon.' -Force -ErrorAction Stop | Out-Null
     if ($MigrateLegacy) {
         $backupDir = Join-Path $script:LogsDir 'startup-backup'
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
@@ -48,7 +48,7 @@ if ($Action -eq 'Install' -or ($Action -eq 'Start' -and -not $task)) {
             if (-not (Test-Path -LiteralPath $bridgeBackup)) {
                 Export-ScheduledTask -TaskName $legacyBridge.TaskName -TaskPath '\' | Set-Content -LiteralPath $bridgeBackup -Encoding utf8
             }
-            Disable-ScheduledTask -TaskName $legacyBridge.TaskName -TaskPath '\' | Out-Null
+            Disable-ScheduledTask -TaskName $legacyBridge.TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
         }
     }
     Write-Output 'Autostart installed for current-user logon.'
@@ -59,8 +59,11 @@ if ($Action -eq 'Start') {
         Start-Process -FilePath $pythonw -ArgumentList "`"$hostScript`" `"$pwsh`"" -WorkingDirectory $script:RepoRoot -WindowStyle Hidden | Out-Null
         Write-Warning 'Started silently for this session only. Legacy autostart is unchanged; run Install -MigrateLegacy as administrator before next logon.'
     } else {
-        Enable-ScheduledTask -TaskName $taskName -TaskPath '\' | Out-Null
-        Start-ScheduledTask -TaskName $taskName -TaskPath '\'
+        $registeredTask = Get-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop
+        if ($registeredTask.State -eq 'Disabled') {
+            Enable-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop | Out-Null
+        }
+        Start-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop
     }
     Write-Output 'Background sync started. Logs: logs/companion/background.log'
 } elseif ($Action -in 'Stop', 'Disable') {
@@ -69,10 +72,10 @@ if ($Action -eq 'Start') {
         & "$env:SystemRoot/System32/taskkill.exe" /PID $hostProcess.ProcessId /T /F | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Could not stop background process tree.' }
     }
-    if ($task -and -not $foreignTask) { Stop-ScheduledTask -TaskName $taskName -TaskPath '\' }
+    if ($task -and -not $foreignTask) { Stop-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop }
     $bridgePath = Join-Path $script:RepoRoot 'scripts/bridge/bin/codex-ornament-bridge.exe'
     Get-CimInstance Win32_Process -Filter "Name = 'codex-ornament-bridge.exe'" | Where-Object { $_.ExecutablePath -eq $bridgePath } | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
-    if ($Action -eq 'Disable' -and $task) { Disable-ScheduledTask -TaskName $taskName -TaskPath '\' | Out-Null }
+    if ($Action -eq 'Disable' -and $task) { Disable-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop | Out-Null }
     Write-Output "Background stopped ($Action)."
 } elseif ($Action -eq 'Status') {
     if ($foreignTask) { Write-Warning 'The scheduled task still points to the legacy installation.' }
