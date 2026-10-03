@@ -15,6 +15,11 @@ int main()
     assert(rawPcm(" \taudio/x-raw \t; rate=16000"));
     assert(rawPcm("application/octet-stream"));
     assert(!rawPcm("") && !rawPcm("audio/mpeg") && !rawPcm("not-audio/pcm") && !rawPcm("audio/pcm-fake"));
+    assert(musicStreamResult(200, "audio/pcm") == MusicStreamResult::Ready);
+    assert(musicStreamResult(200, "text/html") == MusicStreamResult::InvalidFormat);
+    assert(musicStreamResult(422, "application/json") == MusicStreamResult::Unavailable);
+    assert(musicStreamResult(409, "application/json") == MusicStreamResult::Busy);
+    assert(musicStreamResult(502, "application/json") == MusicStreamResult::ServiceError);
     header.header_key = "Content-Length";
     header.header_value = "123";
     assert(streamEvent(&header) == ESP_OK && rawPcm(headers.content_type));

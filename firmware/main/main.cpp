@@ -46,10 +46,11 @@ void updateStatus(lv_timer_t *)
 {
     static unsigned updates = 0;
     if (++updates % 60 == 0) {
-        ESP_LOGI(TAG, "Heap: internal=%u DMA-largest=%u PSRAM=%u",
+        ESP_LOGI(TAG, "Heap: internal=%u DMA-largest=%u PSRAM=%u UI-stack-free=%u",
                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)),
-                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+                 static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     }
     auto status = SystemService::instance().snapshot();
     auto *bar = phone->getDisplay().getStatusBar();

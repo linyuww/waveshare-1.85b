@@ -30,6 +30,8 @@
 
 API key、secret key 和随机令牌只保存在本机忽略目录；设备 NVS 仅保存带随机令牌的局域网桥接地址。若电脑 IP 改变，需要更新私有配置并重新执行第 3 步。
 
+查到歌曲信息不代表拿到可播放音源。2026-10-03 实测 `bad guy / Billie Eilish` 和 `KiLLKiSS / Ave Mujica` 的上游媒体地址返回 HTML 网页，而不是音频；同一接口查找「晴天」能取得非静音音频。桥接服务现在先检查媒体响应，无音源时返回 HTTP 422、`error: source_unavailable`，清除该查询缓存，设备显示「已找到歌曲，但接口没有可播放音源」，不再误报 PCM 格式错误，也不会擅自替换成另一首歌。HTTP 409 表示服务忙碌；其他非 200 状态归为服务错误。
+
 「开始对话」启用服务端自动结束语句模式。也可在小智页面按 BOOT 开始说话，松开结束，或点击「打断并聆听」「说完了」。「停止小智」终止语音连接，不影响音乐和 Codex 提示音。
 
 设置和稳定的 Client-Id 存于设备的 `voice_apps` NVS 命名空间；Wi-Fi 凭据仍由原有共享服务保存。屏幕中的令牌输入是密码框，状态查询不会返回令牌。NVS 当前没有加密；不要把设备共享给不信任的人。
@@ -137,7 +139,9 @@ New-Item -ItemType Directory .cache/assistant-preview -Force
 docker run --rm --mount "type=bind,source=${PWD},target=/work" --mount 'type=volume,source=waveshare-audio-ui-preview,target=/preview-build' espressif/idf:v5.5.3 bash -c 'cmake -S /work/tests/ui_preview -B /preview-build -DCMAKE_BUILD_TYPE=Debug && cmake --build /preview-build --target audio_preview -j 8 && /preview-build/audio_preview /work/.cache/assistant-preview'
 ```
 
-该测试使用真实 LVGL 与生产 `audio_apps.cpp`、模拟服务，覆盖开始对话、BOOT 按下/松开、暂停按钮发出返回请求、设置保存与 100 次页面创建/关闭。生成的 PPM 预览不会证明实际云端语音识别或 Brookesia 页面切换已成功。
+该测试使用真实 LVGL 与生产 `audio_apps.cpp`、模拟服务，覆盖开始对话、BOOT 按下/松开、手动填写歌名/歌手并点击播放、暂停按钮发出返回请求、设置保存、100 次页面创建/关闭、10,000 次空闲刷新及页面直接销毁后的定时器清理。空闲刷新检查内存完整性和稳定性，但虚拟时间压力测试不能代替实机长时间运行。生成的 PPM 预览不会证明实际云端语音识别或 Brookesia 页面切换已成功。
+
+播放器页面只在文字变化时更新标签，隐藏页面不刷新服务快照，页面销毁时清理定时器。GUI 的每分钟堆日志新增 `UI-stack-free`，可结合 `logs/music-ui-device-soak.log` 排查长时间停留卡死；本次重启后抓取的日志没有保留此前卡死时的 panic 或看门狗回溯，因此这些改进不等于已确认卡死根因。
 
 2026-10-03 已在 COM5 实测耀狐网易点歌：签名请求返回歌曲元数据，FFmpeg 输出非静音的 16 kHz 单声道 PCM；设备 `/resolve` 与 `/stream` 均返回 HTTP 200，播放状态累计到 13.5 秒，暂停后返回小智并保持语音上传。桥接服务允许最长 30 分钟连接，避免长时间暂停被短连接超时截断。
 

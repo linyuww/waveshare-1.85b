@@ -27,6 +27,10 @@ lv_obj_t *label(lv_obj_t *parent, const char *text)
     lv_label_set_text(object, text);
     return object;
 }
+void updateLabel(lv_obj_t *object, const char *text)
+{
+    if (strcmp(lv_label_get_text(object), text) != 0) lv_label_set_text(object, text);
+}
 lv_obj_t *input(lv_obj_t *parent, const char *placeholder, const char *text = "", unsigned maximum = 120)
 {
     auto *object = lv_textarea_create(parent);
@@ -121,6 +125,7 @@ lv_obj_t *AudioApp::button(lv_obj_t *parent, const char *text, int action)
 bool AudioApp::run()
 {
     root_ = lv_screen_active();
+    lv_obj_add_event_cb(root_, onRootDeleted, LV_EVENT_DELETE, this);
     const auto shell = createLauncherAppShell(root_, kind_ == Kind::Assistant ? "小智助手" : "音乐播放器");
     lv_obj_set_user_data(shell.home, reinterpret_cast<void *>(static_cast<intptr_t>(Home)));
     lv_obj_add_event_cb(shell.home, onAction, LV_EVENT_CLICKED, this);
@@ -161,11 +166,19 @@ bool AudioApp::run()
 bool AudioApp::back() { return notifyCoreClosed(); }
 bool AudioApp::close()
 {
+    if (root_) lv_obj_remove_event_cb_with_user_data(root_, onRootDeleted, this);
     if (timer_) lv_timer_delete(timer_);
     timer_ = nullptr;
     root_ = status_ = transcript_ = song_ = artist_ = keyboard_ = nullptr;
     boot_pressed_ = false;
     return true;
+}
+void AudioApp::onRootDeleted(lv_event_t *event)
+{
+    auto *self = static_cast<AudioApp *>(lv_event_get_user_data(event));
+    if (lv_event_get_target_obj(event) != self->root_) return;
+    self->root_ = nullptr;
+    self->close();
 }
 void AudioApp::onAction(lv_event_t *event)
 {
@@ -204,6 +217,7 @@ void AudioApp::onKeyboard(lv_event_t *event)
 void AudioApp::onTimer(lv_timer_t *timer)
 {
     auto *self = static_cast<AudioApp *>(lv_timer_get_user_data(timer));
+    if (!self->root_ || !self->status_ || !self->transcript_ || self->root_ != lv_screen_active()) return;
     if (self->kind_ == Kind::Assistant && self->root_ == lv_screen_active()) {
         const bool pressed = gpio_get_level(GPIO_NUM_0) == 0;
         if (pressed && !self->boot_pressed_) AssistantService::instance().listen();
@@ -214,21 +228,21 @@ void AudioApp::onTimer(lv_timer_t *timer)
 }
 void AudioApp::refresh()
 {
-    const auto network = SystemService::instance().snapshot();
     const auto music = MusicService::instance().snapshot();
-    const auto assistant = AssistantService::instance().snapshot();
     const bool music_active = music.state == MusicService::State::Playing || music.state == MusicService::State::Resolving;
     char text[900];
     if (kind_ == Kind::Assistant) {
+        const auto network = SystemService::instance().snapshot();
+        const auto assistant = AssistantService::instance().snapshot();
         snprintf(text, sizeof(text), "Wi-Fi：%s\n%s\n%s%s", SystemService::stateText(network.state), music_active ? "音乐播放中，小智待机并后台聆听" : assistant.message, assistant.activation[0] ? "激活码：" : "", assistant.activation);
-        lv_label_set_text(status_, text);
+        updateLabel(status_, text);
         snprintf(text, sizeof(text), "我：%s\n小智：%s", assistant.recognized[0] ? assistant.recognized : "--", assistant.reply[0] ? assistant.reply : "--");
-        lv_label_set_text(transcript_, text);
+        updateLabel(transcript_, text);
     } else {
         snprintf(text, sizeof(text), "%s\n音量：%d%%\nCodex 完成提示音优先", music.message, shared_audio::volume());
-        lv_label_set_text(status_, text);
+        updateLabel(status_, text);
         snprintf(text, sizeof(text), "%s\n%s\n%lu:%02lu", music.song[0] ? music.song : "未选择歌曲", music.artist,
             static_cast<unsigned long>(music.playback_ms / 60000), static_cast<unsigned long>(music.playback_ms / 1000 % 60));
-        lv_label_set_text(transcript_, text);
+        updateLabel(transcript_, text);
     }
 }

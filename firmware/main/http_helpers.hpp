@@ -54,6 +54,14 @@ inline bool rawPcm(const std::string &content_type)
         strcasecmp(media_type.c_str(), "audio/x-raw") == 0 ||
         strcasecmp(media_type.c_str(), "application/octet-stream") == 0;
 }
+enum class MusicStreamResult { Ready, Unavailable, Busy, ServiceError, InvalidFormat };
+inline MusicStreamResult musicStreamResult(int status, const std::string &content_type)
+{
+    if (status == 422) return MusicStreamResult::Unavailable;
+    if (status == 409) return MusicStreamResult::Busy;
+    if (status != 200) return MusicStreamResult::ServiceError;
+    return rawPcm(content_type) ? MusicStreamResult::Ready : MusicStreamResult::InvalidFormat;
+}
 inline esp_err_t event(esp_http_client_event_t *event)
 {
     auto *response = static_cast<Response *>(event->user_data);

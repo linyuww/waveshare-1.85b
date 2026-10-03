@@ -52,6 +52,46 @@ class MusicTests(unittest.TestCase):
             self.assertEqual(fetch.call_count, 1)
             self.assertIn('X-api-sign', fetch.call_args.args[0].headers)
 
+    def test_preflight_rejects_webpages_before_ffmpeg(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.geturl.return_value = 'https://music.163.com/song'
+        response.__enter__.return_value.headers = {'Content-Type': 'text/html;charset=utf8'}
+        response.__enter__.return_value.read.return_value = b'<!DOCTYPE html>'
+        with mock.patch.object(music, 'urlopen', return_value=response), self.assertRaises(music.MusicUnavailable):
+            music.playable_media('https://music.163.com/song.mp3')
+
+    def test_preflight_accepts_audio_and_checks_redirect_host(self):
+        response = mock.MagicMock()
+        opened = response.__enter__.return_value
+        opened.geturl.return_value = 'https://m801.music.126.net/song.mp3'
+        opened.headers = {'Content-Type': 'audio/mpeg'}
+        opened.read.return_value = b'ID3' + b'\0' * 125
+        with mock.patch.object(music, 'urlopen', return_value=response):
+            self.assertEqual(music.playable_media('https://music.163.com/song.mp3'), opened.geturl())
+            opened.geturl.return_value = 'https://127.0.0.1/private'
+            with self.assertRaises(music.MusicError):
+                music.playable_media('https://music.163.com/song.mp3')
+
+    def test_unavailable_song_has_specific_http_error_and_evicts_cache(self):
+        with music.MusicServer(self.config) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            server.provider.cache[('song', '')] = (float('inf'), {'title': 'song', 'artist': '',
+                                                   'media': 'https://music.163.com/song.mp3'})
+            try:
+                with mock.patch.object(music, 'playable_media', side_effect=music.MusicUnavailable('No audio')), \
+                     mock.patch.object(music.subprocess, 'Popen') as spawn:
+                    with self.assertRaises(HTTPError) as failure:
+                        urlopen(f'http://127.0.0.1:{server.server_port}/' + 'a' * 32 + '/music/stream?song=song', timeout=3)
+                    self.assertEqual(failure.exception.code, 422)
+                    self.assertEqual(json.load(failure.exception)['error'], 'source_unavailable')
+                    spawn.assert_not_called()
+                    self.assertNotIn(('song', ''), server.provider.cache)
+                    self.assertTrue(server.stream_slots.acquire(blocking=False))
+            finally:
+                server.shutdown()
+                thread.join(timeout=3)
+
     def test_http_auth_search_limits_and_pcm_metadata(self):
         with music.MusicServer(self.config) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -82,7 +122,8 @@ class MusicTests(unittest.TestCase):
         process = mock.Mock()
         process.stdout.read.return_value = b''
         process.poll.return_value = 0
-        with mock.patch.object(music.subprocess, 'Popen', return_value=process), self.assertRaises(music.MusicError):
+        with mock.patch.object(music, 'playable_media', return_value='https://music.163.com/test.mp3'), \
+             mock.patch.object(music.subprocess, 'Popen', return_value=process), self.assertRaises(music.MusicUnavailable):
             handler.stream({'media': 'https://music.163.com/test.mp3'})
         process.stdout.close.assert_called_once()
         self.assertTrue(handler.server.stream_slots.acquire(blocking=False))
@@ -98,7 +139,8 @@ class MusicTests(unittest.TestCase):
         process = mock.Mock()
         process.stdout.read.side_effect = [b'\x01\x00' * 2048, b'\x02\x00' * 2048, b'']
         process.poll.return_value = 0
-        with mock.patch.object(music.subprocess, 'Popen', return_value=process) as spawn:
+        with mock.patch.object(music, 'playable_media', return_value='https://music.163.com/test.mp3'), \
+             mock.patch.object(music.subprocess, 'Popen', return_value=process) as spawn:
             handler.stream({'media': 'https://music.163.com/test.mp3'})
         handler.connection.settimeout.assert_called_once_with(1800)
         handler.send_response.assert_called_once_with(200)

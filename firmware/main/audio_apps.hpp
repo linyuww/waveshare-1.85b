@@ -14,6 +14,7 @@ private:
     static void onFocus(lv_event_t *event);
     static void onKeyboard(lv_event_t *event);
     static void onTimer(lv_timer_t *timer);
+    static void onRootDeleted(lv_event_t *event);
     lv_obj_t *button(lv_obj_t *parent, const char *text, int action);
     void refresh();
     Kind kind_;

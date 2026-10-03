@@ -153,7 +153,14 @@ esp_err_t MusicService::stream(const Request &request, const char *url)
     const int64_t length = esp_http_client_fetch_headers(client);
     const int code = esp_http_client_get_status_code(client);
     ESP_LOGI("music", "Stream opened: HTTP %d, PCM=%d", code, audio_http::rawPcm(headers.content_type));
-    if (length < 0 || code != 200 || !audio_http::rawPcm(headers.content_type)) { esp_http_client_cleanup(client); return ESP_ERR_NOT_SUPPORTED; }
+    const auto stream_result = audio_http::musicStreamResult(code, headers.content_type);
+    if (length < 0 || stream_result != audio_http::MusicStreamResult::Ready) {
+        esp_http_client_cleanup(client);
+        if (stream_result == audio_http::MusicStreamResult::Unavailable) return ESP_ERR_NOT_FOUND;
+        if (stream_result == audio_http::MusicStreamResult::Busy) return ESP_ERR_INVALID_STATE;
+        if (stream_result == audio_http::MusicStreamResult::InvalidFormat) return ESP_ERR_NOT_SUPPORTED;
+        return ESP_FAIL;
+    }
     esp_http_client_set_timeout_ms(client, 1000);
     auto *buffer = static_cast<uint8_t *>(heap_caps_malloc(2048, MALLOC_CAP_SPIRAM));
     if (!buffer) { esp_http_client_cleanup(client); return ESP_ERR_NO_MEM; }
@@ -226,6 +233,8 @@ void MusicService::worker()
         if (result == ESP_OK) result = stream(request, url);
         if (request.generation != generation_.load()) continue;
         if (result == ESP_OK) state(State::Idle, "播放结束");
+        else if (result == ESP_ERR_NOT_FOUND) state(State::Error, "已找到歌曲，但接口没有可播放音源，请换一首或稍后重试");
+        else if (result == ESP_ERR_INVALID_STATE) state(State::Error, "音乐服务忙碌或网络已断开，请稍后重试");
         else if (result == ESP_ERR_NOT_SUPPORTED) state(State::Error, "音乐服务需返回 16kHz 单声道 PCM，不能直接播放 MP3");
         else state(State::Error, "播放失败，请检查共享网络与音乐服务");
     }

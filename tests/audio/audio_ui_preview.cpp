@@ -22,6 +22,8 @@ unsigned listen_calls = 0;
 unsigned finish_calls = 0;
 unsigned save_calls = 0;
 unsigned play_calls = 0;
+std::string played_song;
+std::string played_artist;
 AppTarget destination = AppTarget::Codex;
 bool online = true;
 void flush(lv_display_t *display, const lv_area_t *area, uint8_t *data)
@@ -43,6 +45,24 @@ lv_obj_t *findButton(lv_obj_t *parent, const char *text)
         if (lv_obj_check_type(child, &lv_label_class) && strcmp(lv_label_get_text(child), text) == 0 &&
             lv_obj_check_type(parent, &lv_button_class)) return parent;
         if (auto *found = findButton(child, text)) return found;
+    }
+    return nullptr;
+}
+lv_obj_t *findInput(lv_obj_t *parent, const char *placeholder)
+{
+    for (uint32_t index = 0; index < lv_obj_get_child_count(parent); ++index) {
+        auto *child = lv_obj_get_child(parent, index);
+        if (lv_obj_check_type(child, &lv_textarea_class) && strcmp(lv_textarea_get_placeholder_text(child), placeholder) == 0) return child;
+        if (auto *found = findInput(child, placeholder)) return found;
+    }
+    return nullptr;
+}
+lv_obj_t *findLabel(lv_obj_t *parent, const char *text)
+{
+    for (uint32_t index = 0; index < lv_obj_get_child_count(parent); ++index) {
+        auto *child = lv_obj_get_child(parent, index);
+        if (lv_obj_check_type(child, &lv_label_class) && strcmp(lv_label_get_text(child), text) == 0) return child;
+        if (auto *found = findLabel(child, text)) return found;
     }
     return nullptr;
 }
@@ -78,7 +98,7 @@ bool AssistantService::listen() { ++listen_calls; return true; }
 bool AssistantService::finishListening() { ++finish_calls; return true; }
 MusicService &MusicService::instance() { static MusicService service; return service; }
 MusicService::Snapshot MusicService::snapshot() { return music; }
-bool MusicService::play(const char *song, const char *) { ++play_calls; return song[0]; }
+bool MusicService::play(const char *song, const char *artist) { ++play_calls; played_song = song; played_artist = artist; return song[0]; }
 void MusicService::pause(bool return_to_assistant) { music.state = State::Paused; if (return_to_assistant) destination = AppTarget::Assistant; }
 bool MusicService::resume() { music.state = State::Playing; return true; }
 SystemService &SystemService::instance() { static SystemService service; return service; }
@@ -117,7 +137,27 @@ int main(int count, char **arguments)
         strlcpy(music.song, "测试歌曲", sizeof(music.song));
         strlcpy(music.message, "正在播放，小智后台聆听暂停命令", sizeof(music.message));
         assert(player.run());
+        auto *song = findInput(screen, "歌名");
+        auto *artist = findInput(screen, "歌手（可留空）");
+        assert(song && artist);
+        lv_textarea_set_text(song, "bad guy");
+        lv_textarea_set_text(artist, "Billie Eilish");
+        click("播放");
+        assert(played_song == "bad guy" && played_artist == "Billie Eilish");
         if (cycle == 0) save(output + "/music.ppm");
+        if (cycle == 0) {
+            advance();
+            auto *status = findLabel(screen, "正在播放，小智后台聆听暂停命令\n音量：60%\nCodex 完成提示音优先");
+            assert(status);
+            const char *unchanged = lv_label_get_text(status);
+            lv_mem_monitor_t before = {};
+            lv_mem_monitor(&before);
+            for (int tick = 0; tick < 10000; ++tick) advance();
+            assert(lv_label_get_text(status) == unchanged);
+            lv_mem_monitor_t after = {};
+            lv_mem_monitor(&after);
+            assert(after.free_size + 1024 >= before.free_size && lv_mem_test() == LV_RESULT_OK);
+        }
         click("暂停并返回小智");
         assert(destination == AppTarget::Assistant && music.state == MusicService::State::Paused);
         assert(player.close());
@@ -130,6 +170,14 @@ int main(int count, char **arguments)
         advance();
         online = !online;
     }
-    assert(start_calls == 100 && listen_calls == 100 && finish_calls == 100 && play_calls == 0);
-    puts("PASS: production assistant/music views, BOOT events, pause button dispatch, shared settings and 100 cleanup cycles");
+    assert(start_calls == 100 && listen_calls == 100 && finish_calls == 100 && play_calls == 100);
+    auto *temporary = lv_obj_create(nullptr);
+    lv_screen_load(temporary);
+    AudioApp deleted_player(AudioApp::Kind::Music);
+    assert(deleted_player.run());
+    lv_screen_load(screen);
+    lv_obj_delete(temporary);
+    advance();
+    assert(deleted_player.close());
+    puts("PASS: manual song/artist playback dispatch, 10000 idle refreshes, memory integrity, screen deletion and 100 cleanup cycles");
 }

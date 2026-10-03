@@ -20,6 +20,29 @@ class MusicError(Exception):
     pass
 
 
+class MusicUnavailable(MusicError):
+    pass
+
+
+def playable_media(value):
+    request = Request(media_url(value), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com/"})
+    try:
+        with urlopen(request, timeout=8) as response:
+            resolved = media_url(response.geturl())
+            content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+            prefix = response.read(128).lstrip()
+            if not prefix or prefix.startswith((b"<", b"{", b"[")) or content_type in (
+                    "text/html", "text/plain", "application/json", "application/xhtml+xml"):
+                raise MusicUnavailable("Song source returned a webpage or no audio")
+            return resolved
+    except HTTPError as error:
+        if error.code in (403, 404, 410):
+            raise MusicUnavailable("Song source is currently unavailable") from error
+        raise MusicError("Music source request failed") from error
+    except (URLError, OSError, ValueError) as error:
+        raise MusicError("Music source connection failed") from error
+
+
 def signed_headers(api_key, secret_key, timestamp=None):
     timestamp = str(int(time.time()) if timestamp is None else timestamp)
     signature = hmac.new(secret_key.encode(),
@@ -55,6 +78,10 @@ class Provider:
         self.config = config
         self.cache = {}
         self.lock = threading.Lock()
+
+    def invalidate(self, song, artist):
+        with self.lock:
+            self.cache.pop((song, artist), None)
 
     def resolve(self, song, artist):
         cache_key = (song, artist)
@@ -163,6 +190,10 @@ class MusicHandler(BaseHTTPRequestHandler):
                                    "sampleRate": 16000, "channels": 1})
             else:
                 self.stream(track)
+        except MusicUnavailable as error:
+            self.server.provider.invalidate(song, artist)
+            logging.warning("%s", error)
+            self.respond(422, {"ok": False, "error": "source_unavailable", "message": str(error)})
         except MusicError as error:
             logging.warning("%s", error)
             self.respond(502, {"ok": False, "message": str(error)})
@@ -176,20 +207,21 @@ class MusicHandler(BaseHTTPRequestHandler):
         process = None
         watchdog = None
         try:
+            url = playable_media(track["media"])
             process = subprocess.Popen([
                 self.server.config["ffmpeg"], "-nostdin", "-hide_banner", "-loglevel", "error",
                 "-protocol_whitelist", "http,https,tcp,tls,crypto", "-rw_timeout", "15000000",
                 "-user_agent", "Mozilla/5.0", "-referer", "https://music.163.com/",
-                "-i", track["media"], "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "pipe:1"],
+                "-i", url, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "pipe:1"],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            watchdog = threading.Timer(25, process.kill)
+            watchdog = threading.Timer(20, process.kill)
             watchdog.daemon = True
             watchdog.start()
             first = process.stdout.read(4096)
             watchdog.cancel()
             if not first:
-                raise MusicError("No playable audio; song may be unavailable")
+                raise MusicUnavailable("Song source could not be decoded as audio")
             watchdog = threading.Timer(1800, process.kill)
             watchdog.daemon = True
             watchdog.start()
