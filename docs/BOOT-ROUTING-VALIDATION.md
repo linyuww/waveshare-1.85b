@@ -21,6 +21,14 @@
 - 产物：`dist/assistant/waveshare_launcher.bin`（应用）和 `dist/assistant/waveshare-launcher-usb.bin`（合并镜像）。
 - 远端 main 原为旧功能线 `88da770`；依用户“一切以新的 main 为主”的要求衔接其历史，保持本次基于本地新 main 的文件内容，正常推送，不强制覆盖远端历史。
 
-## 未执行
+## USB 烧录与实机冒烟测试（2026-10-03）
 
-未烧录、未发布 Release，未执行实机 BOOT/触摸切换、真实 STT/TTS 或可听音频验收。服务测试桩和状态机测试不替代真实服务器、GPIO 抖动及实机时序验证。
+- 用户追加授权烧录测试后，通过 COM5 写入 `a04f40c` 所对应应用固件，仅写 `0x10000`，保留 NVS。esptool 4.11.0 写入 6,430,896 字节，设备端哈希校验通过；日志 `logs/boot-routing-flash.log`。
+- 复位观察 45 秒：启动版本 0.3.0，ELF SHA256 前缀 `9ea212b88` 与导出镜像一致。Wi-Fi 自动连接、校时成功，HTTPS 探测 `ESP_OK / HTTP 302`，证书校验成功；日志 `logs/boot-routing-hardware-boot.log`。
+- 随后观察 58 秒，通过现有 USB 控制台打开小智、查询状态、toggle 停止、toggle 重连，再 stop。两次 hello 成功，采样率 24 kHz；两次均记录至少 300 帧 Opus 上行。聆听状态均为 `connected=1 listening=1 speaking=0`，停止后均为 `connected=0 listening=0 speaking=0`；日志 `logs/boot-routing-hardware-assistant.log`。
+- 该段日志未见 panic、看门狗、栈溢出、内存分配失败或非预期重启。小智任务栈剩余约 41.6 KiB，GUI 栈剩余 8144 字节；停止后内部可用 RAM 恢复至 22955 字节。
+- 观察到 BLE 反复断开并自动重连，原因码 `0x08`；配对仍保留，但 BLE 稳定性不算通过。本次不修改蓝牙实现，尚未定位这一现象。
+
+## 尚未验收
+
+未发布 Release。实体 BOOT 按住/松开、按住时触摸跨应用切换、真实 STT/TTS 和可听音频效果仍需人工验收；USB 控制台启停与上行帧计数不能替代这些操作的实机验证。
