@@ -190,6 +190,44 @@ class SourceSelectionTests(unittest.TestCase):
                     companion.options_from_args(['--json-only'] + arguments)
 
 
+class SyncRecoveryTests(unittest.TestCase):
+    def test_watch_recovers_from_quota_timeout_without_writing_old_data(self):
+        snapshot = companion.build_snapshot(
+            companion.bridge_to_rate_limits(quota_payload(), now=NOW), now=NOW)
+        with mock.patch.object(companion, 'read_snapshot', side_effect=[
+                companion.CompanionError('timed out'), snapshot]):
+            with mock.patch.object(companion, 'run_ble_once', return_value=1) as write:
+                with mock.patch.object(companion.time, 'sleep') as sleep:
+                    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                        self.assertEqual(companion.run([
+                            '--watch', '--device-address', '28:84:85:B2:1C:4E']), 1)
+                sleep.assert_called_once_with(10)
+                self.assertEqual(write.call_count, 1)
+                self.assertEqual(write.call_args.args[1], snapshot)
+
+    def test_ble_retry_fetches_updated_allowance(self):
+        original = companion.build_snapshot(
+            companion.bridge_to_rate_limits(quota_payload(), now=NOW), now=NOW)
+        fresh = copy.deepcopy(original)
+        original['five_hour_remaining_percent'] = 6
+        fresh['five_hour_remaining_percent'] = 11
+        options = companion.options_from_args([
+            '--once', '--device-address', '28:84:85:B2:1C:4E', '--write-attempts', '2'])
+        failed = mock.Mock(write_acknowledged=False, stderr='unreachable')
+        failed.last_error.return_value = None
+        failed.find.return_value = None
+        success = mock.Mock(write_acknowledged=True)
+        with mock.patch.object(companion, 'read_snapshot', return_value=fresh) as read:
+            with mock.patch.object(companion, 'build_ps_bridge', return_value='script') as build:
+                with mock.patch.object(companion, 'run_ps_bridge', side_effect=[failed, success]):
+                    with mock.patch.object(companion.time, 'sleep'):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            self.assertEqual(companion.run_ble_once(options, original), 0)
+        read.assert_called_once_with(options)
+        payloads = [json.loads(call.kwargs['payload']) for call in build.call_args_list]
+        self.assertEqual([payload['five_hour_remaining_percent'] for payload in payloads], [6, 11])
+
+
 class BridgePackageTests(unittest.TestCase):
     def test_bundled_executable_matches_recorded_checksum(self):
         root = MODULE_PATH.parents[1] / 'bridge'
@@ -212,6 +250,7 @@ class BridgeHttpTests(unittest.TestCase):
     def setUpClass(cls):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                time.sleep(cls.delay)
                 self.send_response(cls.status)
                 self.end_headers()
                 self.wfile.write(cls.body)
@@ -231,6 +270,7 @@ class BridgeHttpTests(unittest.TestCase):
         cls.thread.join()
 
     def setUp(self):
+        type(self).delay = 0
         type(self).status = 200
         type(self).body = json.dumps(quota_payload(time.time())).encode()
 
@@ -255,6 +295,11 @@ class BridgeHttpTests(unittest.TestCase):
         type(self).status = 503
         with self.assertRaises(companion.CompanionError):
             companion.read_bridge_quota(self.url)
+
+    def test_upstream_refresh_longer_than_three_seconds_is_allowed(self):
+        type(self).delay = 3.2
+        limits = companion.read_bridge_quota(self.url)
+        self.assertEqual(companion.build_snapshot(limits)['weekly_remaining_percent'], 98)
 
 
 if __name__ == '__main__':

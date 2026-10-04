@@ -16,6 +16,7 @@ esp_codec_dev_handle_t microphone;
 bool microphone_open = false;
 std::atomic<bool> chime_active{false};
 std::atomic<bool> speech_active{false};
+std::atomic<bool> assistant_output_enabled{true};
 std::atomic<int> volume_percent{60};
 esp_codec_dev_sample_info_t format()
 {
@@ -94,11 +95,16 @@ esp_err_t write(Source source, const int16_t *samples, size_t count, int source_
     int16_t converted[240];
     const size_t output_count = count * sample_rate / source_rate;
     for (size_t offset = 0; offset < output_count; offset += 240) {
+        if (source == Source::Assistant && !assistant_output_enabled.load()) return ESP_OK;
         if (preempted(source)) {
             skipDuration(output_count - offset);
             return ESP_OK;
         }
         xSemaphoreTake(output_mutex, portMAX_DELAY);
+        if (source == Source::Assistant && !assistant_output_enabled.load()) {
+            xSemaphoreGive(output_mutex);
+            return ESP_OK;
+        }
         if (preempted(source)) {
             xSemaphoreGive(output_mutex);
             skipDuration(output_count - offset);
@@ -122,6 +128,8 @@ void prioritize(Source source, bool active)
     if (source == Source::Chime) chime_active = active;
     if (source == Source::Assistant) speech_active = active;
 }
+
+void enableAssistantOutput(bool enabled) { assistant_output_enabled = enabled; }
 
 esp_err_t setVolume(int percent)
 {

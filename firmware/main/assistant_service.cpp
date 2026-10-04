@@ -83,23 +83,32 @@ AssistantService::Config AssistantService::config() { Lock lock(mutex_); return 
 AssistantService::Snapshot AssistantService::snapshot() { Lock lock(mutex_); return status_; }
 bool AssistantService::enqueue(Action action, int volume)
 {
-    Command command{action, volume};
+    Command command{action, volume, 0, session_generation_.load()};
     return commands_ && xQueueSend(commands_, &command, 0) == pdTRUE;
 }
 bool AssistantService::start() { return enqueue(Action::Start); }
-bool AssistantService::stop() { return enqueue(Action::Stop); }
+bool AssistantService::stop()
+{
+    if (!commands_) return false;
+    // Stop must work even when the command queue is full. Silence playback
+    // now; the owner task tears down the socket and frees pending packets.
+    session_generation_.fetch_add(1);
+    shared_audio::enableAssistantOutput(false);
+    stop_requested_ = true;
+    return true;
+}
 bool AssistantService::toggleChat() { return enqueue(Action::Toggle); }
 uint32_t AssistantService::beginBootListening()
 {
     const uint32_t session = boot_recording_.next();
-    Command command{Action::BootListen, 0, session};
+    Command command{Action::BootListen, 0, session, session_generation_.load()};
     return commands_ && xQueueSend(commands_, &command, 0) == pdTRUE ? session : 0;
 }
 void AssistantService::finishBootListening(uint32_t session) { boot_recording_.finish(session); }
 void AssistantService::finishBootRecording()
 {
     // An abort waits for tts/stop before starting the owned recording.
-    if (!hello_ || aborted_ || !boot_recording_.takeFinish()) return;
+    if (stop_requested_.load() || !hello_ || aborted_ || !boot_recording_.takeFinish()) return;
     if (!sendListen("stop")) receive_failed_ = true;
     listening_ = false;
 }
@@ -338,6 +347,7 @@ bool AssistantService::sendListen(const char *state)
 
 void AssistantService::handleText(const char *text)
 {
+    if (stop_requested_.load()) return;
     auto *root = cJSON_Parse(text);
     if (!root) return;
     const char *type = audio_http::string(root, "type");
@@ -402,7 +412,7 @@ void AssistantService::handleText(const char *text)
 
 void AssistantService::handleAudio(const char *data, size_t length)
 {
-    if (!decoder_ || !hello_ || !speaking_ || aborted_ || length > 4096) return;
+    if (stop_requested_.load() || !decoder_ || !hello_ || !speaking_ || aborted_ || length > 4096) return;
     const int count = opus_decode(decoder_, reinterpret_cast<const unsigned char *>(data), length, decode_pcm_, 5760, 0);
     if (count < 0) { receive_failed_ = true; return; }
     speech_deadline_ = esp_timer_get_time() + 30000000;
@@ -411,8 +421,9 @@ void AssistantService::handleAudio(const char *data, size_t length)
 
 void AssistantService::capture()
 {
-    if (!encoder_ || !hello_ || !listening_ || speaking_) return;
+    if (stop_requested_.load() || !encoder_ || !hello_ || !listening_ || speaking_) return;
     if (shared_audio::read(capture_pcm_, 1440) != ESP_OK) { receive_failed_ = true; return; }
+    if (stop_requested_.load()) return;
     for (size_t index = 0; index < 960; ++index) decode_pcm_[index] = capture_pcm_[index * 3 / 2];
     unsigned char encoded[512];
     const int length = opus_encode(encoder_, decode_pcm_, 960, encoded, sizeof(encoded));
@@ -456,10 +467,17 @@ void AssistantService::worker()
     const esp_err_t console_result = assistant_console::initialize();
     if (console_result != ESP_OK) ESP_LOGW(TAG, "USB diagnostics unavailable: %s", esp_err_to_name(console_result));
     while (true) {
+        if (stop_requested_.exchange(false)) {
+            disconnect();
+            receive_failed_ = false;
+            setMessage("点击开始对话");
+        }
         assistant_console::poll();
         finishBootRecording();
         Command command;
         if (xQueueReceive(commands_, &command, pdMS_TO_TICKS(10)) == pdTRUE) {
+            if (command.action != Action::Save && command.action != Action::Volume &&
+                command.generation != session_generation_.load()) continue;
             if (command.action == Action::Toggle) {
                 const auto action = xiaozhi_protocol::toggleChatAction(socket_ && !hello_, hello_, listening_);
                 if (action == xiaozhi_protocol::ChatAction::Ignore) continue;
@@ -467,6 +485,13 @@ void AssistantService::worker()
                     action == xiaozhi_protocol::ChatAction::Connect ? Action::Start : Action::Listen;
             }
             if (command.action == Action::BootListen && !boot_recording_.claim(command.boot_session)) continue;
+            if (command.action == Action::Start || command.action == Action::Listen || command.action == Action::BootListen) {
+                shared_audio::enableAssistantOutput(true);
+                if (stop_requested_.load() || command.generation != session_generation_.load()) {
+                    shared_audio::enableAssistantOutput(false);
+                    continue;
+                }
+            }
             if (command.action == Action::Start || command.action == Action::Stop || command.action == Action::Listen)
                 boot_recording_.cancel();
             if (command.action == Action::Start) {
@@ -475,6 +500,7 @@ void AssistantService::worker()
                 const esp_err_t result = connect();
                 if (result != ESP_OK && result != ESP_ERR_NOT_FINISHED && snapshot().message[0] == 0) setMessage("连接失败，请重试");
             } else if (command.action == Action::Stop) {
+                shared_audio::enableAssistantOutput(false);
                 disconnect();
                 setMessage("点击开始对话");
             } else if (command.action == Action::Listen || command.action == Action::BootListen) {
@@ -508,6 +534,7 @@ void AssistantService::worker()
                 }
             }
         }
+        if (stop_requested_.load()) continue;
         if (socket_connected_.load() && !announced_connected_) {
             announced_connected_ = true;
             auto *hello = cJSON_CreateObject();
@@ -523,7 +550,7 @@ void AssistantService::worker()
             if (!send(hello)) receive_failed_ = true;
         }
         Packet packet;
-        for (int count = 0; count < 8 && xQueueReceive(packets_, &packet, 0) == pdTRUE; ++count) {
+        for (int count = 0; count < 8 && !stop_requested_.load() && xQueueReceive(packets_, &packet, 0) == pdTRUE; ++count) {
             if (packet.opcode == 1) handleText(packet.data);
             else if (packet.opcode == 2) handleAudio(packet.data, packet.length);
             free(packet.data);

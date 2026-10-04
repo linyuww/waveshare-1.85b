@@ -10,9 +10,11 @@ constexpr int ESP_ERR_NO_MEM = 1;
 constexpr int ESP_ERR_INVALID_STATE = 2;
 constexpr int ESP_ERR_INVALID_ARG = 3;
 constexpr int ESP_ERR_INVALID_SIZE = 4;
-inline size_t strlcpy(char *target, const char *source, size_t size)
+// Avoid redeclaring libc's strlcpy under fortified host builds.
+inline size_t preview_strlcpy(char *target, const char *source, size_t size)
 {
     const size_t length = strlen(source);
     if (size) { memcpy(target, source, std::min(length, size - 1)); target[std::min(length, size - 1)] = 0; }
     return length;
 }
+#define strlcpy preview_strlcpy

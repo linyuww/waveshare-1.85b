@@ -73,9 +73,9 @@ MIN_INTERVAL_SECONDS = 10
 DEFAULT_BRIDGE_URL = "http://127.0.0.1:8787/quota"
 DEFAULT_BRIDGE_MAX_AGE_SECONDS = 180
 
-#: Keep this short. The bridge is a localhost HTTP call; if it is not there,
-#: failing fast matters more than waiting.
-BRIDGE_TIMEOUT_SECONDS = 3.0
+#: /quota can synchronously fetch the upstream usage API (15 s timeout)
+#: when its cache expires. Allow that fetch to finish, including local overhead.
+BRIDGE_TIMEOUT_SECONDS = 20.0
 
 #: Per-attempt ceiling for a GATT write. Kept well under 30 s on purpose: a
 #: stuck write pins the GATT session, and the firmware keeps notifying at 1 Hz
@@ -1462,6 +1462,11 @@ def run_ble_once(options: Options, snapshot: dict) -> int:
     last_detail = "no attempt was made"
 
     for attempt in range(1, attempts + 1):
+        if attempt > 1:
+            # Discovery/retries can take minutes. Never resend the allowance
+            # captured before the failed session or its old reset countdown.
+            snapshot = read_snapshot(options)
+            payload = encode_payload(snapshot)
         source = build_ps_bridge(
             options.device_address,
             payload=payload,
@@ -1541,7 +1546,18 @@ def run(argv: list[str] | None = None) -> int:
     # BLE modes.
     first = True
     while True:
-        snapshot = read_snapshot(options)
+        try:
+            snapshot = read_snapshot(options)
+        except CompanionError as exc:
+            if not options.watch:
+                raise
+            # Keep transient HTTP errors in this loop rather than triggering
+            # the launcher's increasing restart backoff (up to a minute).
+            retry_delay = min(options.interval, MIN_INTERVAL_SECONDS)
+            print(f"quota refresh failed: {exc}; retrying in {retry_delay}s",
+                  file=sys.stderr)
+            time.sleep(retry_delay)
+            continue
         if first or options.verbose:
             report_snapshot(snapshot)
         code = run_ble_once(options, snapshot)

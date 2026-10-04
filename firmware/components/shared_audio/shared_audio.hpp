@@ -11,6 +11,7 @@ esp_err_t enableMicrophone();
 esp_err_t read(int16_t *samples, size_t count);
 esp_err_t write(Source source, const int16_t *samples, size_t count, int source_rate = sample_rate);
 void prioritize(Source source, bool active);
+void enableAssistantOutput(bool enabled);
 esp_err_t setVolume(int percent);
 int volume();
 }

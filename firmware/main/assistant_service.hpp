@@ -44,7 +44,7 @@ public:
 
 private:
     enum class Action { Start, Stop, Listen, Toggle, Save, Volume, BootListen };
-    struct Command { Action action; int volume = 0; uint32_t boot_session = 0; };
+    struct Command { Action action; int volume = 0; uint32_t boot_session = 0; uint32_t generation = 0; };
     struct Packet { int opcode; size_t length; char *data; };
     static void workerEntry(void *context);
     static void websocketEvent(void *context, esp_event_base_t base, int32_t id, void *event);
@@ -77,6 +77,8 @@ private:
     int receive_opcode_ = 0;
     std::atomic<bool> socket_connected_{false};
     std::atomic<bool> receive_failed_{false};
+    std::atomic<bool> stop_requested_{false};
+    std::atomic<uint32_t> session_generation_{0};
     bool announced_connected_ = false;
     bool hello_ = false;
     bool listening_ = false;

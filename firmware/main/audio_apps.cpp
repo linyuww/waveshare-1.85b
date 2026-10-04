@@ -166,14 +166,15 @@ bool AudioApp::run()
     ESP_ERROR_CHECK(gpio_config(&button_config));
     timer_ = lv_timer_create(onTimer, 50, this);
     resume();
-    if (!AssistantService::instance().start()) updateLabel(status_, "暂时无法开始，请点击重试");
     return true;
 }
 bool AudioApp::back() { return notifyCoreClosed(); }
 bool AudioApp::pause()
 {
+    const bool was_active = active_;
     active_ = false;
     if (timer_) lv_timer_pause(timer_);
+    if (was_active) AssistantService::instance().stop();
     if (boot_session_) {
         AssistantService::instance().finishBootListening(boot_session_);
         boot_session_ = 0;
@@ -183,9 +184,11 @@ bool AudioApp::pause()
 bool AudioApp::resume()
 {
     if (!timer_ || !root_) return true;
+    if (active_) return true;
     active_ = true;
     boot_.reset(gpio_get_level(GPIO_NUM_0) == 0, lv_tick_get());
     lv_timer_resume(timer_);
+    if (!AssistantService::instance().start()) updateLabel(status_, "暂时无法开始，请点击重试");
     return true;
 }
 bool AudioApp::close()

@@ -135,12 +135,15 @@ int main(int count, char **arguments)
     auto *screen = lv_screen_active();
     for (unsigned cycle = 0; cycle < 100; ++cycle) {
         AudioApp assistant;
+        const unsigned starts_before = start_calls, stops_before = stop_calls;
         voice = {};
         voice.connected = true;
         voice.listening = true;
         strlcpy(voice.recognized, "你好，小智", sizeof(voice.recognized));
         assert(assistant.run());
-        assert(start_calls == cycle + 1);
+        assert(start_calls == starts_before + 1);
+        assert(assistant.resume());
+        assert(start_calls == starts_before + 1);
         auto *avatar = findAvatar(screen);
         assert(avatar);
         for (const char *removed : {"开始对话", "打断并聆听", "说完了", "停止小智", "共享设置", "播放"}) assert(!findButton(screen, removed));
@@ -208,9 +211,11 @@ int main(int count, char **arguments)
             lv_screen_load(other_screen);
             strlcpy(voice.reply, "后台不更新页面", sizeof(voice.reply));
             advance();
+            assert(stop_calls == stops_before + 1);
             assert(findLabel(screen, "你好，我是小智。"));
             lv_screen_load(screen);
             assert(assistant.resume());
+            assert(start_calls == starts_before + 2);
             advance();
             assert(findLabel(screen, "后台不更新页面"));
             lv_obj_delete(other_screen);
@@ -225,7 +230,7 @@ int main(int count, char **arguments)
         }
         assert(assistant.close());
         assert(assistant.close());
-        assert(stop_calls == 0);
+        assert(stop_calls == stops_before + (cycle == 0 ? 2 : 1));
         lv_obj_clean(screen);
         advance();
         assert(toggle_calls == cycle + 1);
@@ -244,13 +249,14 @@ int main(int count, char **arguments)
         assert(lv_mem_test() == LV_RESULT_OK);
     }
     AudioApp destroyed;
+    const unsigned stops_before_delete = stop_calls;
     assert(destroyed.run());
     auto *replacement = lv_obj_create(nullptr);
     lv_screen_load(replacement);
     lv_obj_delete(screen);
     advance();
     assert(destroyed.close());
-    assert(stop_calls == 0);
+    assert(stop_calls == stops_before_delete + 1);
     assert(toggle_calls == 100);
     assert(lv_mem_test() == LV_RESULT_OK);
     lv_obj_clean(replacement);

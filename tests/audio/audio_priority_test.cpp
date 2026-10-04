@@ -9,6 +9,7 @@
 namespace {
 std::vector<int16_t> output;
 bool preempt_next = false;
+bool stop_assistant_next = false;
 int hardware_volume = 0;
 int opened = 0;
 }
@@ -24,6 +25,10 @@ int esp_codec_dev_write(esp_codec_dev_handle_t, void *samples, int bytes)
 {
     const auto *pcm = static_cast<const int16_t *>(samples);
     output.insert(output.end(), pcm, pcm + bytes / 2);
+    if (stop_assistant_next) {
+        stop_assistant_next = false;
+        shared_audio::enableAssistantOutput(false);
+    }
     if (preempt_next) {
         preempt_next = false;
         shared_audio::prioritize(shared_audio::Source::Chime, true);
@@ -56,6 +61,15 @@ int main()
     assert(read(pcm, 480) == ESP_OK);
     prioritize(Source::Chime, false);
     prioritize(Source::Assistant, false);
+    output.clear();
+    stop_assistant_next = true;
+    assert(write(Source::Assistant, pcm, 480) == ESP_OK && output.size() == 240);
+    output.clear();
+    assert(write(Source::Assistant, pcm, 480) == ESP_OK && output.empty());
+    assert(write(Source::Chime, pcm, 480) == ESP_OK && output.size() == 480);
+    output.clear();
+    enableAssistantOutput(true);
+    assert(write(Source::Assistant, pcm, 480) == ESP_OK && output.size() == 480);
     output.clear();
     preempt_next = true;
     preview_audio_delay = 0;
