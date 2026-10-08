@@ -90,6 +90,8 @@ python -m pip install esptool
 
 ## 使用
 
+电脑端配额服务入口和保留工具清单见 [scripts/README.md](scripts/README.md)。
+
 1. 开机后点击“设置”。
 2. 点击“扫描 Wi-Fi”，选择网络，输入密码，点击“连接”。
 3. 出现“已连接，所有应用共享网络”后返回桌面。
@@ -142,7 +144,6 @@ ESP32 编译、合并固件、烧录和测试使用 Windows PowerShell，不需�
 ```powershell
 Enter-EspIdf -Version 5.5.3
 ./scripts/build.ps1
-./scripts/build-audio.ps1
 ./scripts/preview-ui.ps1
 ./scripts/test-audio.ps1
 ./scripts/test-fitness.ps1

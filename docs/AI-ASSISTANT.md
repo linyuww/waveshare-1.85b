@@ -4,7 +4,7 @@
 
 保留 Brookesia 桌面、Codex Micro、健身应用、共享 Wi-Fi 与完成提示音，只安装一个「小智助手」图标。音乐播放器、歌曲输入框、音乐任务及音乐 MCP 工具已暂时移除，电脑伴侣不再自动启动音乐桥接。
 
-移除前代码已提交至 `1e9d977440db298c04c64c49429d32782352096b`，固件备份在 `.cache/firmware-backups/1e9d977440db298c04c64c49429d32782352096b/`。旧音乐桥接脚本及私有配置保留以便后续恢复，但不属于当前设备运行流程。
+移除前代码已提交至 `1e9d977440db298c04c64c49429d32782352096b`，固件备份在 `.cache/firmware-backups/1e9d977440db298c04c64c49429d32782352096b/`。停用的音乐桥接脚本、配置示例及其测试已删除；如需恢复，从历史提交取回。
 
 交互对照 [小智源码](https://github.com/78/xiaozhi-esp32/blob/0d576d3d4c049c6f55eaf879725dc23e516511b4/main/application.cc) 的 `HandleToggleChatEvent()` 和 `tts/stop` 分支：通过现有板级音频、网络适配器接入桌面，而不是用完整上游固件替换 Brookesia。界面仅有头像、状态、当前一句字幕、必要的激活码，以及系统返回入口；不再展示开始、打断、说完、停止等多组虚拟按键。
 
@@ -55,7 +55,7 @@ Codex 任务完成提示音保持最高优先级，抢占小智输出。音量�
 USB 串口支持 `xiaozhi status|connect|toggle|stop|open` 和 `help`。例如：
 
 ```powershell
-& D:\Espressif\python_env\idf5.4_py3.12_env\Scripts\python.exe scripts/assistant-console.py --port COM5 --command open --seconds 30 --output logs/assistant-simple.log
+& D:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe scripts/assistant-console.py --port COM5 --command open --seconds 30 --output logs/assistant-simple.log
 ```
 
 状态日志不输出令牌或 Wi-Fi 密码。已保留的小写 Device-Id 修复、64 KiB Opus 栈修复和收音/播音切换修复不回退；历史记录见 `logs/assistant-connect-verified-status.log` 和 `logs/assistant-stack-fixed.log`。
@@ -67,8 +67,8 @@ USB 串口支持 `xiaozhi status|connect|toggle|stop|open` 和 `help`。例如�
 ```powershell
 docker run --rm --mount "type=bind,source=$($PWD.Path),target=/workspace" -w /workspace espressif/idf:v5.5.3 bash -c "cmake -S tests/audio -B .cache/audio-tests && cmake --build .cache/audio-tests && ctest --test-dir .cache/audio-tests --output-on-failure"
 docker run --rm --mount "type=bind,source=$($PWD.Path),target=/workspace" -w /workspace espressif/idf:v5.5.3 bash -c "cmake -S tests/ui_preview -B .cache/audio-ui-build && cmake --build .cache/audio-ui-build --target audio_preview && mkdir -p .cache/assistant-preview && .cache/audio-ui-build/audio_preview .cache/assistant-preview"
-./scripts/build-audio.ps1
-python scripts/verify_artifacts.py --dist dist/assistant --build .cache/assistant-build/firmware/build
+./scripts/build.ps1
+python scripts/verify_artifacts.py
 ```
 
 宿主渲染在 `.cache/assistant-preview/assistant.ppm` 和 `activation.ppm`，不是屏幕实拍。实机仍需人工验收识别、TTS、说话中打断，以及 Codex 完成时实际可听到的提示音。升级只写 COM5 的 `0x10000` 应用分区，不擦除 NVS 或重新配对。

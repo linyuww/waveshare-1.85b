@@ -30,6 +30,10 @@ CONNECT 不再清空已恢复的加密和订阅状态；广播失败最多每秒
 
 PowerShell 7.4：
 
+配额脚本及开发工具的用途清单见 [scripts/README.md](../scripts/README.md)。
+`quota-server.ps1` 是唯一管理入口，新安装的自启任务直接使用该脚本。
+已安装的旧入口 `start-quota-server.ps1` 仅转发，避免清理后现有登录自启失效。
+
 ```powershell
 ./scripts/quota-server.ps1 -Action Start
 ./scripts/quota-server.ps1 -Action Status
@@ -44,6 +48,7 @@ Windows 热点通常使用 `192.168.137.1`；设备自动使用网关，不硬�
 Windows 防火墙需允许当前 Python 程序的 TCP 8787 入站，建议范围为 LocalSubnet。
 需要登录自启时，在管理员 PowerShell 运行 `./scripts/quota-server.ps1 -Action Install`。
 新任务名称为 `CodexMicroQuotaHttp`。
+Python 安装在其他位置时，向 `Start` 和 `Install` 传入 `-Python 'C:\path\python.exe'`；自启任务会保存指定路径。
 `Install` 同时删除本项目旧的蓝牙自启动任务，并添加仅允许本地子网的 8787 防火墙规则。
 
 升级时删除旧的 `CodexMicroAllowanceCompanion` 计划任务。本次会话已停止它，
