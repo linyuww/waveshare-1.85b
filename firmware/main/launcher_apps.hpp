@@ -13,7 +13,8 @@ public:
 private:
     static void onAction(lv_event_t *event);
     static void onNetworkSelected(lv_event_t *event);
-    static void onTextFocused(lv_event_t *event);
+    static void onGesture(lv_event_t *event);
+    static void onVolume(lv_event_t *event);
     static void onKeyboard(lv_event_t *event);
     static void onBrightness(lv_event_t *event);
     static void onTimer(lv_timer_t *timer);
@@ -27,6 +28,23 @@ private:
     void submitConnection();
     void updateScanList(const SystemService::Snapshot &status);
 
+    enum class SettingsPage { Home, Wifi, Bluetooth, Sound, Assistant, About, Battery };
+    enum class TextField { Ssid, Password, Ota, Websocket, Token };
+    void showSettingsPage(SettingsPage page);
+    void openText(TextField field, const char *text);
+    lv_obj_t *settings_page_ = nullptr;
+    lv_obj_t *settings_title_ = nullptr;
+    lv_obj_t *volume_label_ = nullptr;
+    lv_obj_t *home_values_[6] = {};
+    SettingsPage settings_page_kind_ = SettingsPage::Home;
+    TextField text_field_ = TextField::Ssid;
+    char join_ssid_[33] = {};
+    lv_obj_t *battery_values_[10] = {};
+    lv_obj_t *device_values_[3] = {};
+    lv_obj_t *assistant_values_[3] = {};
+    lv_obj_t *confirmation_ = nullptr;
+    uint32_t confirmation_at_ = 0;
+    int confirmation_action_ = 0;
     Kind kind_;
     lv_obj_t *root_ = nullptr;
     lv_obj_t *message_ = nullptr;
@@ -39,6 +57,7 @@ private:
     lv_obj_t *test_button_ = nullptr;
     lv_obj_t *brightness_label_ = nullptr;
     lv_obj_t *bluetooth_label_ = nullptr;
+    lv_obj_t *bluetooth_address_ = nullptr;
     lv_obj_t *bluetooth_switch_ = nullptr;
     lv_obj_t *pair_button_ = nullptr;
     lv_obj_t *form_ = nullptr;
@@ -49,4 +68,5 @@ private:
     SystemService::AccessPoint listed_aps_[SystemService::MAX_APS] = {};
     int listed_ap_count_ = 0;
     bool secured_ = true;
+    bool allow_empty_password_ = false;
 };

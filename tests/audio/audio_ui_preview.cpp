@@ -111,7 +111,7 @@ SystemService::Snapshot SystemService::snapshot() { Snapshot result; result.read
 const char *SystemService::stateText(NetworkState state) { return state == NetworkState::Connected ? "已连接" : "未连接"; }
 bool SystemService::timeValid() { return false; }
 BluetoothService &BluetoothService::instance() { static BluetoothService service; return service; }
-BluetoothService::Snapshot BluetoothService::snapshot() { return {}; }
+BluetoothService::Snapshot BluetoothService::snapshot() { return BluetoothService::Snapshot(); }
 bool BluetoothService::pulse(Key key) { if (key == Key::Voice) ++codex_voices; return true; }
 bool BluetoothService::holdMic(bool pressed) {
     if (!accept_mic) return false;
@@ -136,7 +136,7 @@ int main(int count, char **arguments)
     for (unsigned cycle = 0; cycle < 100; ++cycle) {
         AudioApp assistant;
         const unsigned starts_before = start_calls, stops_before = stop_calls;
-        voice = {};
+        voice = AssistantService::Snapshot();
         voice.connected = true;
         voice.listening = true;
         strlcpy(voice.recognized, "你好，小智", sizeof(voice.recognized));
@@ -323,6 +323,12 @@ int main(int count, char **arguments)
     lv_screen_load(other);
     CodexMicroApp codex;
     assert(codex.run());
+    auto *home = findButton(other, LV_SYMBOL_HOME);
+    assert(home && !findButton(other, "桌面"));
+    lv_area_t home_area;
+    lv_obj_get_coords(home, &home_area);
+    assert(home_area.x1 >= 0 && home_area.x2 < 360 && home_area.y1 >= 0 && home_area.y2 < 360);
+    save(output + "/codex-home.ppm");
     preview_boot_pressed = true;
     advance(); advance();
     preview_boot_pressed = false;

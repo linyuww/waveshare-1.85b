@@ -7,7 +7,8 @@
 ## 当前功能
 
 - 中文界面、独立应用图标、底部上滑回桌面、应用内返回按钮。
-- 设置中扫描 2.4 GHz Wi-Fi、触屏输入密码、手动输入 SSID、忘记网络。
+- 设置采用 Muse 的紫色卡片、独立子页、右滑返回和圆屏大按键输入，删除冗长说明；Wi-Fi、蓝牙、声音与显示、小智、设备信息和电池各自成页。
+- 设置中扫描 2.4 GHz Wi-Fi、触屏输入密码、手动输入 SSID、忘记网络，使用 main 原有的网络和蓝牙服务。
 - 成功获得 IP 后保存网络凭据，重启自动连接，断线后按 2/4/8/16/30 秒间隔重试；单次连接最多等待 20 秒。
 - 所有应用共用一份 Wi-Fi 状态和网络连接；切换应用不重置 Wi-Fi。
 - 亮度实时调整，松手后保存，开机恢复。
@@ -81,8 +82,8 @@ python -m pip install esptool
 已有 ESP-IDF Python 环境时，可用 `-Python` 指定其 `python.exe`，无需修改系统 Python。例如本机使用：
 
 ```powershell
-./scripts/flash.ps1 -Port COM5 -Python 'D:\Espressif\python_env\idf5.4_py3.12_env\Scripts\python.exe'
-& 'D:\Espressif\python_env\idf5.4_py3.12_env\Scripts\python.exe' scripts/monitor.py --port COM5 --reset --seconds 30 --output logs/boot.log
+./scripts/flash.ps1 -Port COM5 -Python 'D:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe'
+& 'D:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe' scripts/monitor.py --port COM5 --reset --seconds 30 --output logs/boot.log
 ```
 
 `monitor.py --reset` 会复位原板并捕获指定时长的启动日志；省略 `--reset` 可观察正在运行的固件。
@@ -132,3 +133,19 @@ docs/                       兼容依据、字体许可与实机检查清单
 固件打包后可运行 `python scripts/verify_artifacts.py` 检查版本、哈希、分区地址与容量。Codex Micro 图形和画布生命周期的宿主测试可在同一 Docker 镜像中运行 `bash scripts/test-render.sh`。
 
 官方源码基线及依赖依据见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。构建、渲染和 USB 启动检查证据见 [docs/VALIDATION.md](docs/VALIDATION.md)；完整交互与压力验收的剩余项目见 [docs/HARDWARE-CHECKLIST.md](docs/HARDWARE-CHECKLIST.md)。
+
+## Windows 原生开发环境
+
+ESP32 编译、合并固件、烧录和测试使用 Windows PowerShell，不需要 Docker 或 WSL。此项目保持 ESP-IDF 5.5.3，工具位于 `D:\Espressif`。
+
+```powershell
+Enter-EspIdf -Version 5.5.3
+./scripts/build.ps1
+./scripts/build-audio.ps1
+./scripts/preview-ui.ps1
+./scripts/test-audio.ps1
+./scripts/test-fitness.ps1
+./scripts/test-render.ps1
+```
+
+构建脚本会自动加载原生环境，使用独立的 `build-windows` 目录，避免重用 Linux 的 CMake 缓存。烧录脚本默认使用对应的 ESP-IDF Python 环境；烧录前仍需确认目标板与实际 COM 端口。

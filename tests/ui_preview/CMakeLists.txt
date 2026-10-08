@@ -6,6 +6,7 @@ set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+file(TO_CMAKE_PATH "$ENV{IDF_PATH}" IDF_ROOT)
 add_subdirectory(${ROOT}/firmware/managed_components/lvgl__lvgl lvgl)
 add_executable(preview preview.cpp ${ROOT}/firmware/main/app_icons.c ${ROOT}/firmware/main/dark/scr_bg.c ${ROOT}/firmware/main/ui_font.c
 ${ROOT}/firmware/components/brookesia_core/systems/base/assets/fonts/maison_neue_book/esp_brookesia_font_maison_neue_book_18.c
@@ -23,7 +24,7 @@ target_compile_options(preview PRIVATE -UNDEBUG)
 add_executable(audio_preview ../audio/audio_ui_preview.cpp
     ${ROOT}/firmware/main/audio_apps.cpp ${ROOT}/firmware/main/app_icons.c ${ROOT}/firmware/main/ui_font.c)
 target_include_directories(audio_preview PRIVATE ${ROOT}/tests/audio/stubs ${ROOT}/firmware/main
-    ${ROOT}/firmware/components/shared_audio /opt/esp/idf/components/json/cJSON)
+    ${ROOT}/firmware/components/shared_audio ${IDF_ROOT}/components/json/cJSON)
 target_link_libraries(audio_preview PRIVATE lvgl m)
 target_compile_options(audio_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 foreach(theme day night)
@@ -36,4 +37,15 @@ endforeach()
 target_sources(audio_preview PRIVATE ${ROOT}/firmware/main/codex_micro_app.cpp
     ${ROOT}/firmware/components/codex_micro/gfx.cpp)
 target_include_directories(audio_preview PRIVATE ${ROOT}/firmware/components/codex_micro ${ROOT}/tests/stubs)
-target_link_options(audio_preview PRIVATE -Wl,-z,noexecstack)
+if(NOT WIN32)
+    target_link_options(audio_preview PRIVATE -Wl,-z,noexecstack)
+endif()
+
+add_executable(settings_preview ../settings/settings_preview.cpp
+    ${ROOT}/firmware/main/launcher_apps.cpp ${ROOT}/firmware/main/muse_keypad.c
+    ${ROOT}/firmware/main/app_icons.c ${ROOT}/firmware/main/ui_font.c)
+target_include_directories(settings_preview PRIVATE ${ROOT}/tests/settings/stubs ${ROOT}/tests/audio/stubs
+    ${ROOT}/firmware/main ${ROOT}/firmware/components/codex_micro ${ROOT}/firmware/components/shared_audio
+    ${IDF_ROOT}/components/json/cJSON)
+target_link_libraries(settings_preview PRIVATE lvgl m)
+target_compile_options(settings_preview PRIVATE -Wall -Wextra -Werror -UNDEBUG)

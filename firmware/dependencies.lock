@@ -340,13 +340,13 @@ dependencies:
   waveshare/pcf85063a:
     dependencies: []
     source:
-      path: /project/components/waveshare__pcf85063a
+      path: D:\Desktop\waveshare-1.85b\firmware\components\waveshare__pcf85063a
       type: local
     version: 1.0.1
   waveshare/qmi8658:
     dependencies: []
     source:
-      path: /project/components/waveshare__qmi8658
+      path: D:\Desktop\waveshare-1.85b\firmware\components\waveshare__qmi8658
       type: local
     version: 1.0.1
 direct_dependencies:

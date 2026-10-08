@@ -1,13 +1,13 @@
 param(
     [Parameter(Mandatory = $true)][string]$Port,
     [int]$Baud = 460800,
-    [string]$Python = 'python'
+    [string]$Python = 'D:\Espressif\python_env\idf5.5_py3.12_env\Scripts\python.exe'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $binary = Join-Path $projectRoot 'dist/waveshare_launcher.bin'
 if (!(Test-Path -LiteralPath $binary)) { throw 'Build the firmware first with scripts/build.ps1.' }
-# Host esptool accesses Windows COM ports; no USB forwarding to Docker is required.
+# Native esptool accesses Windows COM ports directly.
 $bootloader = Join-Path $projectRoot 'dist/bootloader.bin'
 $partitions = Join-Path $projectRoot 'dist/partition-table.bin'
 # Write individual partitions so subsequent updates preserve the launcher's NVS settings.

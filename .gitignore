@@ -1,5 +1,6 @@
 vendor/
 firmware/build/
+firmware/build-windows/
 firmware/managed_components/
 firmware/sdkconfig
 firmware/sdkconfig.old
