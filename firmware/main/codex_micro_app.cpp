@@ -1,4 +1,5 @@
 #include "codex_micro_app.hpp"
+#include "quota_service.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -256,20 +257,22 @@ void CodexMicroApp::render()
     input.bleConnected = status.connected && status.enabled;
     input.hostRpcObserved = codex.hostRpcObserved;
     input.lastHostRpcAtMs = codex.lastHostRpcAtMs;
-    input.quotaWaitingSinceMs = status.quota_waiting_since;
-    input.quotaAvailable = codex.quota.available;
-    input.quotaReceivedAtMs = codex.quota.restored ? now - 180001 : codex.quota.receivedAtMs;
+    const auto quota = QuotaService::instance().snapshot();
+    input.quotaSourceConnected = quota.wifiConnected;
+    input.quotaWaitingSinceMs = quota.waitingSinceMs;
+    input.quotaAvailable = quota.available;
+    input.quotaReceivedAtMs = quota.receivedAtMs;
     const auto health = connection_health::evaluate(input, now, 300000, 180000);
     dashboard::State ui;
     ui.linkHealth = health.link == connection_health::Link::CodexLive ? dashboard::LinkHealth::CodexLive : health.link == connection_health::Link::BleOnly ? dashboard::LinkHealth::BleOnly : dashboard::LinkHealth::Offline;
     ui.batteryPercent = status.battery_percent;
     ui.externalPower = status.external_power;
-    ui.quotaAvailable = codex.quota.available;
+    ui.quotaAvailable = quota.available;
     ui.quotaStale = health.quota == connection_health::Quota::Stale;
-    ui.fiveHourRemainingPercent = codex.quota.fiveHourRemainingPercent;
-    ui.weeklyRemainingPercent = codex.quota.weeklyRemainingPercent;
-    const uint32_t elapsed = (now - codex.quota.receivedAtMs) / 1000;
-    if (!codex.quota.restored && elapsed < codex.quota.fiveHourResetInSeconds) ui.fiveHourResetInSeconds = codex.quota.fiveHourResetInSeconds - elapsed;
+    ui.fiveHourRemainingPercent = quota.fiveHourRemainingPercent;
+    ui.weeklyRemainingPercent = quota.weeklyRemainingPercent;
+    const uint32_t elapsed = (now - quota.countdownAtMs) / 1000;
+    if (elapsed < quota.fiveHourResetInSeconds) ui.fiveHourResetInSeconds = quota.fiveHourResetInSeconds - elapsed;
     ui.timeValid = SystemService::timeValid();
     if (ui.timeValid) {
         const time_t time_now = time(nullptr);

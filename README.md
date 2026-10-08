@@ -95,7 +95,8 @@ python -m pip install esptool
 3. 出现“已连接，所有应用共享网络”后返回桌面。
 4. 打开“时钟”等待校时；打开“网络测试”检查 HTTPS 请求。
 5. 应用内点击“返回”，或从屏幕底部上滑回桌面。应用可能保留在最近应用中，可在最近应用界面上滑关闭。
-6. 设置中开启蓝牙，在 Windows 中添加 **Codex Micro**；双击 `scripts/companion/start-companion.cmd` 自动启动本项目附带的网桥并持续同步额度，不再依赖原项目目录，配置及检查方式见 `scripts/companion/README.md`。
+6. 电脑开启 2.4 GHz 热点，运行 `./scripts/quota-server.ps1`，在设置中让开发板连接该热点。设备每 60 秒请求 `http://<热点网关>:8787/quota` 更新配额，失败后 10 秒重试；配额不依赖蓝牙。
+7. 设置中开启蓝牙，在 Windows 中添加 **Codex Micro**，用于 HID 控制。此版切换到 NimBLE，首次升级需移除电脑中的旧设备记录并重新配对。协议和 HTTP 部署见 [docs/HID-HTTP-QUOTA.md](docs/HID-HTTP-QUOTA.md)。
 7. 桌面左右滑动可找到 Codex Micro 图标。仪表盘顶部“桌面”按钮可返回。
 
 “忘记当前网络”需要连续点击两次确认。手机热点请设为 2.4 GHz；首版针对开放网络和常见个人密码 Wi-Fi，不支持需要网页登录的网络和企业证书配网。

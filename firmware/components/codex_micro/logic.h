@@ -18,7 +18,7 @@
 #include "cJSON.h"
 
 // ------------------------------------------------------- connection health ---
-// Bluedroid can deliver disconnect and reconnect callbacks before the main
+// BLE can deliver disconnect and reconnect callbacks before the main
 // loop gets another turn. Preserve those ordered conn_id transitions instead of
 // sampling only the final aggregate count, which could otherwise make a new
 // host session inherit the previous session's CODEX LIVE state.
@@ -42,6 +42,7 @@ struct Input {
   std::uint32_t lastHostRpcAtMs = 0;
   std::uint32_t quotaWaitingSinceMs = 0;
   bool quotaAvailable = false;
+  bool quotaSourceConnected = false;
   std::uint32_t quotaReceivedAtMs = 0;
 };
 
@@ -146,7 +147,7 @@ inline Result evaluate(const Input& input, std::uint32_t nowMs,
     result.quota = age(nowMs, input.quotaReceivedAtMs) <= quotaTtlMs
                        ? Quota::Fresh
                        : Quota::Stale;
-  } else if (input.bleConnected) {
+  } else if (input.quotaSourceConnected) {
     result.quota = age(nowMs, input.quotaWaitingSinceMs) <= quotaTtlMs
                        ? Quota::Waiting
                        : Quota::Stale;
@@ -195,53 +196,6 @@ inline Method classify(const cJSON* request) {
 }
 
 }  // namespace host_rpc
-
-// ---------------------------------------------------------- quota payload ---
-namespace quota_payload {
-
-struct Snapshot {
-  float fiveHourRemainingPercent = 0.0f;
-  std::uint32_t fiveHourResetInSeconds = 0;
-  float weeklyRemainingPercent = 0.0f;
-  std::uint32_t weeklyResetInSeconds = 0;
-};
-
-inline bool parse(const cJSON* value, Snapshot& output) {
-  if (!cJSON_IsObject(value)) return false;
-  const cJSON* fiveHourRemaining = cJSON_GetObjectItemCaseSensitive(
-      value, "five_hour_remaining_percent");
-  const cJSON* fiveHourReset = cJSON_GetObjectItemCaseSensitive(
-      value, "five_hour_reset_in_seconds");
-  const cJSON* weeklyRemaining = cJSON_GetObjectItemCaseSensitive(
-      value, "weekly_remaining_percent");
-  const cJSON* weeklyReset = cJSON_GetObjectItemCaseSensitive(
-      value, "weekly_reset_in_seconds");
-  if (!cJSON_IsNumber(fiveHourRemaining) || !cJSON_IsNumber(fiveHourReset) ||
-      !cJSON_IsNumber(weeklyRemaining) || !cJSON_IsNumber(weeklyReset)) {
-    return false;
-  }
-
-  const double fiveHourPercent = fiveHourRemaining->valuedouble;
-  const double weeklyPercent = weeklyRemaining->valuedouble;
-  const double fiveHourSeconds = fiveHourReset->valuedouble;
-  const double weeklySeconds = weeklyReset->valuedouble;
-  if (!std::isfinite(fiveHourPercent) || fiveHourPercent < 0.0 ||
-      fiveHourPercent > 100.0 || !std::isfinite(weeklyPercent) ||
-      weeklyPercent < 0.0 || weeklyPercent > 100.0 ||
-      !std::isfinite(fiveHourSeconds) || fiveHourSeconds < 0.0 ||
-      !std::isfinite(weeklySeconds) || weeklySeconds < 0.0) {
-    return false;
-  }
-
-  output.fiveHourRemainingPercent = static_cast<float>(fiveHourPercent);
-  output.fiveHourResetInSeconds =
-      static_cast<std::uint32_t>(fiveHourSeconds);
-  output.weeklyRemainingPercent = static_cast<float>(weeklyPercent);
-  output.weeklyResetInSeconds = static_cast<std::uint32_t>(weeklySeconds);
-  return true;
-}
-
-}  // namespace quota_payload
 
 // --------------------------------------------------------- touch gestures ---
 namespace touch_gesture {

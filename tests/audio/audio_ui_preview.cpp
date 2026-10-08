@@ -1,3 +1,4 @@
+#include "quota_service.hpp"
 #include "audio_apps.hpp"
 #include "codex_micro_app.hpp"
 #include "bluetooth_service.hpp"
@@ -382,3 +383,6 @@ int main(int count, char **arguments)
     lv_obj_delete(other);
     puts("PASS: production Codex/audio routing, single releases, held entry/switch, queue failures and 100 cleanup cycles");
 }
+
+QuotaService &QuotaService::instance() { static QuotaService service; return service; }
+QuotaService::Snapshot QuotaService::snapshot() { return Snapshot(); }

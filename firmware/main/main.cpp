@@ -1,3 +1,4 @@
+#include "quota_service.hpp"
 #include "bsp/esp-bsp.h"
 #include "esp_brookesia.hpp"
 #include "esp_log.h"
@@ -131,6 +132,7 @@ extern "C" void app_main()
     const esp_err_t audio_result = shared_audio::init();
     if (audio_result != ESP_OK) ESP_LOGW(TAG, "Shared audio unavailable: %s", esp_err_to_name(audio_result));
     ESP_ERROR_CHECK(BluetoothService::instance().start());
+    ESP_ERROR_CHECK(QuotaService::instance().start());
     ESP_ERROR_CHECK(AppNavigation::initialize() ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(AssistantService::instance().initialize());
     LvLock::registerCallbacks([](int timeout) { return bsp_display_lock(timeout) == ESP_OK; }, []() { bsp_display_unlock(); return true; });

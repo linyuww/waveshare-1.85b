@@ -6,6 +6,8 @@
 #include "app_navigation.hpp"
 #include "assistant_service.hpp"
 #include "system_service.hpp"
+#include "quota_service.hpp"
+#include "esp_timer.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_console.h"
 #include "esp_heap_caps.h"
@@ -17,6 +19,15 @@ bool ready;
 char line[320];
 size_t used;
 bool overflow;
+int quotaStatus(int count, char **) {
+    if (count != 1) return 1;
+    const auto state = QuotaService::instance().snapshot();
+    const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    printf("quota: wifi=%d available=%d age=%lus endpoint=%s status=%s\n",
+        state.wifiConnected, state.available, static_cast<unsigned long>((now - state.receivedAtMs) / 1000), state.endpoint, state.message);
+    if (state.available) printf("quota: 5h=%.1f weekly=%.1f\n", state.fiveHourRemainingPercent, state.weeklyRemainingPercent);
+    return 0;
+}
 int command(int count, char **arguments)
 {
     if (count != 2) {
@@ -59,6 +70,12 @@ esp_err_t initialize()
     entry.help = "Inspect assistant status, toggle the conversation or open its page";
     entry.func = command;
     result = esp_console_cmd_register(&entry);
+    if (result == ESP_OK) {
+        entry.command = "quota";
+        entry.help = "Inspect independent HTTP quota state";
+        entry.func = quotaStatus;
+        result = esp_console_cmd_register(&entry);
+    }
     if (result == ESP_OK) result = esp_console_register_help_command();
     ready = result == ESP_OK;
     if (ready) ESP_LOGI("xiaozhi", "USB diagnostics ready: xiaozhi status|connect|toggle|stop|open, help");

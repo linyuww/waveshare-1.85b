@@ -1,6 +1,6 @@
 # 本项目内置的 Codex 网桥
 
-从用户提供的 `D:\Desktop\codex\codex-quota-widget` 复制，供本项目独立运行。日常入口是 `scripts/companion/start-companion.cmd`，不需要安装 Rust。
+从用户提供的 `D:\Desktop\codex\codex-quota-widget` 复制，供本项目独立运行。日常入口是 `scripts/quota-server.ps1`，不需要安装 Rust。
 
 ## 内容与来源
 
@@ -16,7 +16,7 @@
 
 ## 运行约束
 
-本项目启动器默认将网桥绑定到 `127.0.0.1:8787`，并将额度缓存与事件日志隔离到 `logs/companion/`。登录信息按原程序逻辑从本机 Codex 登录文件读取；不会发送到开发板，也不会存入项目。
+本项目启动器默认将网桥绑定到 `127.0.0.1:8786`，并将额度缓存与事件日志隔离到 `logs/quota-http/`。登录信息按原程序逻辑从本机 Codex 登录文件读取；不会发送到开发板，也不会存入项目。
 
 完整原程序还包含 hook、天气、音乐等接口。本项目只依赖 `/ready` 和 `/quota`，没有复制原项目的天气或音乐密钥配置。
 
@@ -29,6 +29,6 @@ cargo build --locked --release --manifest-path scripts/bridge/Cargo.toml -p code
 cargo test --locked --manifest-path scripts/bridge/Cargo.toml
 ```
 
-构建输出位于被 Git 忽略的 `scripts/bridge/target/`。替换内置程序时，要先停止该程序，再复制构建结果并同步更新 `runtime.json` 的程序 SHA-256、大小及来源，之后重跑自动测试和 BLE 写入验证。
+构建输出位于被 Git 忽略的 `scripts/bridge/target/`。替换内置程序时，要先停止该程序，再复制构建结果并同步更新 `runtime.json` 的程序 SHA-256、大小及来源，之后重跑自动测试和 HTTP 拉取验证。
 
-本次机器缺少 `link.exe`，源码构建在 MSVC 链接阶段失败；没有安装或修改系统构建工具。运行可行性以已复制程序的真实重启、HTTP readiness、额度读取及 BLE ATT 确认为准，而不是声称源码构建或 Rust 测试已通过。
+本次机器缺少 `link.exe`，源码构建在 MSVC 链接阶段失败；没有安装或修改系统构建工具。运行可行性以已复制程序的真实重启、HTTP readiness 和额度读取为准，而不是声称源码构建或 Rust 测试已通过。

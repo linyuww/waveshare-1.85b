@@ -26,13 +26,17 @@ The first release has one 8 MiB app slot and reserves the remaining usable flash
 
 Compilation verifies the component/API combination. LCD colors, touch mapping, timing, reconnection, memory usage, and power behavior still require the physical board.
 
-## Codex Micro integration (0.2.0)
+## Codex Micro integration (0.3.2)
 
-Codex Micro graphics and the native Bluedroid protocol are imported from the user's local ESP-IDF >=5.4 project. No external Bluetooth framework is introduced. `bt`, `json`, and the I2C/I2S APIs are supplied by ESP-IDF 5.5.3. GAP/GATTS and the interface-specific MAC API are verified against its official headers; the generated configuration enables BLE 4.2, GATTS, SMP, and Wi-Fi coexistence. Bluetooth controller and host run on core 0; LVGL and the application worker run on core 1.
+HID uses ESP-IDF 5.5.3's built-in NimBLE with its GAP, GATT, SM and NVS store APIs.
+The layout keeps the Codex vendor HID report (ID 6, 63-byte body, VID/PID 303A:8360).
+Host initialization and pairing lifecycle follow Muse; desktop HID uses Just Works
+rather than Muse's phone passkey UI. `host/ble_hs.h`, `host/ble_store.h` and the bundled
+`examples/bluetooth/nimble/bleprph` are the exact-version API evidence.
+NimBLE allocations prefer PSRAM; the host runs on core 0 and LVGL on core 1.
+Quota uses a separate HTTP task and does not depend on BLE.
 
-The BSP retains ownership of the LCD, touch and I2C bus. Source provenance and adaptation details are recorded in [CODEX-MICRO-INTEGRATION.md](CODEX-MICRO-INTEGRATION.md).
-
-`BT_ALLOCATION_FROM_SPIRAM_FIRST` is enabled to keep Bluedroid allocations from competing with Wi-Fi and LCD DMA for internal RAM. The QMI8658 header guards its `M_PI` macro against the standard math header definition.
+The BSP retains ownership of LCD, touch and I2C. See [HID-HTTP-QUOTA.md](HID-HTTP-QUOTA.md).
 
 ## On-board memory correction (0.2.1)
 

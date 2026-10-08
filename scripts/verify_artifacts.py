@@ -4,11 +4,12 @@ import hashlib
 import json
 import struct
 import argparse
+import os
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-parser.add_argument("--build", type=Path, default=ROOT / "firmware/build")
+parser.add_argument("--build", type=Path, default=ROOT / "firmware" / ("build-windows" if os.name == "nt" else "build"))
 arguments = parser.parse_args()
 DIST = arguments.dist
 merged = (DIST / "waveshare-launcher-usb.bin").read_bytes()

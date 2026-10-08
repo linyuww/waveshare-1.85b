@@ -6,8 +6,7 @@
 #include "board_i2c.h"
 #include "chime.h"
 #include "dashboard_ui.h"
-#include "esp_bt_device.h"
-#include "esp_gap_ble_api.h"
+#include "esp_mac.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -98,12 +97,12 @@ void BluetoothService::worker()
         status_.enabled = enabled;
         status_.ready = initialized_;
         status_.busy = false;
-        status_.quota_waiting_since = nowMs();
         if (!initialized_) snprintf(status_.message, sizeof(status_.message), "蓝牙启动失败：%s", esp_err_to_name(error));
         else strlcpy(status_.message, enabled ? "在电脑中配对 Codex Micro" : "蓝牙已关闭", sizeof(status_.message));
         if (initialized_) {
-            const uint8_t *mac = esp_bt_dev_get_address();
-            if (mac) snprintf(status_.address, sizeof(status_.address), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            uint8_t mac[6] = {};
+            esp_read_mac(mac, ESP_MAC_BT);
+            snprintf(status_.address, sizeof(status_.address), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         }
     }
     if (!initialized_) ESP_LOGE(TAG, "Start failed: %s", esp_err_to_name(error));
@@ -195,13 +194,14 @@ void BluetoothService::execute(const Command &command)
             }
             if (backend_.connected()) err = ESP_ERR_TIMEOUT;
             else {
-                backend_.enterPairingMode();
+                const int removed = backend_.enterPairingMode();
+                if (removed < 0) err = ESP_FAIL;
                 const uint32_t bonds_until = nowMs() + 3000;
-                while (esp_ble_get_bond_device_num() > 0 && static_cast<int32_t>(nowMs() - bonds_until) < 0) {
+                while (backend_.bondCount() > 0 && static_cast<int32_t>(nowMs() - bonds_until) < 0) {
                     backend_.poll();
                     vTaskDelay(pdMS_TO_TICKS(20));
                 }
-                err = esp_ble_get_bond_device_num() > 0 ? ESP_ERR_TIMEOUT : ESP_OK;
+                if (err == ESP_OK && backend_.bondCount() > 0) err = ESP_ERR_TIMEOUT;
             }
         }
         const esp_err_t enabled_error = backend_.setEnabled(enabled);
@@ -256,7 +256,6 @@ void BluetoothService::publish()
     if (completed >= 0 && backend_.enabled() && chimes_) xQueueOverwrite(chimes_, &completed);
     Lock lock(mutex_);
     if (latest.connectionEpoch != status_.codex.connectionEpoch) {
-        status_.quota_waiting_since = now;
         previous_agents_.fill(-1);
     }
     if (latest.dirty || status_.advertising != advertising || status_.connected != latest.connected) ++status_.revision;

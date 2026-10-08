@@ -19,7 +19,6 @@ public:
         int8_t battery_percent = -1;
         int8_t completed_agent = -1;
         uint32_t completion_at = 0;
-        uint32_t quota_waiting_since = 0;
         uint32_t revision = 0;
         char address[18] = {};
         char message[128] = "正在启动蓝牙服务";
