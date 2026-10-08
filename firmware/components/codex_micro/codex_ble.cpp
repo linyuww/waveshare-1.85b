@@ -20,7 +20,7 @@ void ble_store_config_init(void);
 
 namespace {
 constexpr char kTag[] = "hid";
-constexpr char kFirmwareVersion[] = "0.3.2";
+constexpr char kFirmwareVersion[] = "0.3.3";
 constexpr size_t kReportBodySize = 63, kPayloadSize = 61;
 CodexMicroBle *g_instance;
 std::atomic<uint16_t> g_connection{BLE_HS_CONN_HANDLE_NONE};
@@ -51,6 +51,18 @@ ble_gatt_chr_def disChars[3] = {}, hidChars[7] = {}, batteryChars[2] = {};
 ble_gatt_dsc_def inputDescriptors[2] = {}, outputDescriptors[2] = {};
 ble_gatt_svc_def services[4] = {};
 
+void observeConnection(uint16_t conn) {
+  if (conn == BLE_HS_CONN_HANDLE_NONE) return;
+  uint16_t expected = BLE_HS_CONN_HANDLE_NONE;
+  if (!g_connection.compare_exchange_strong(expected, conn)) return;
+  ++g_session;
+  g_inputSubscribed = g_batterySubscribed = false;
+  ble_gap_conn_desc desc{};
+  g_encrypted = !ble_gap_conn_find(conn, &desc) && desc.sec_state.encrypted;
+  g_instance->onConnectionEvent(true, conn);
+  ESP_LOGI(kTag, "connected id=%u", conn);
+}
+
 struct Connections { uint16_t count = 0; uint16_t ids[1] = {}; };
 Connections copyConnections() {
   Connections c;
@@ -60,6 +72,7 @@ Connections copyConnections() {
 }
 int access(uint16_t conn, uint16_t, ble_gatt_access_ctxt *ctx, void *arg) {
   const auto field = static_cast<Field>(reinterpret_cast<intptr_t>(arg));
+  observeConnection(conn);
   if (ctx->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
     uint8_t bytes[64]; uint16_t length = 0;
     const int rc = ble_hs_mbuf_to_flat(ctx->om, bytes, sizeof(bytes), &length);
@@ -129,7 +142,7 @@ void startAdvertising() {
   if (ble_gap_adv_active()) { g_instance->onAdvertisingState(true); return; }
   ble_hs_adv_fields fields{};
   fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-  const ble_uuid16_t hid = BLE_UUID16_INIT(0x1812);
+  static const ble_uuid16_t hid = BLE_UUID16_INIT(0x1812);
   fields.uuids16 = const_cast<ble_uuid16_t *>(&hid); fields.num_uuids16 = 1; fields.uuids16_is_complete = 1;
   const char *name = "Codex Micro";
   fields.name = reinterpret_cast<const uint8_t *>(name); fields.name_len = strlen(name); fields.name_is_complete = 1;
@@ -147,13 +160,14 @@ int gapEvent(ble_gap_event *event, void *) {
     case BLE_GAP_EVENT_CONNECT:
       g_instance->onAdvertisingState(false);
       if (event->connect.status) { startAdvertising(); break; }
-      g_connection = event->connect.conn_handle;
-      ++g_session;
-      g_inputSubscribed = g_batterySubscribed = g_encrypted = false;
-      g_instance->onConnectionEvent(true, event->connect.conn_handle);
-      ESP_LOGI(kTag, "connected id=%u", event->connect.conn_handle);
+      // IDF may deliver MTU, encryption or restored subscriptions first.
+      // Keep the state from those events instead of clearing it on CONNECT.
+      observeConnection(event->connect.conn_handle);
       // HOGP requires encryption; Just Works preserves the desktop HID UX.
-      ble_gap_security_initiate(event->connect.conn_handle);
+      if (!g_encrypted) {
+        const int rc = ble_gap_security_initiate(event->connect.conn_handle);
+        if (rc && rc != BLE_HS_EALREADY) ESP_LOGW(kTag, "security initiate rc=%d", rc);
+      }
       break;
     case BLE_GAP_EVENT_DISCONNECT:
       g_connection = BLE_HS_CONN_HANDLE_NONE;
@@ -164,11 +178,13 @@ int gapEvent(ble_gap_event *event, void *) {
       startAdvertising();
       break;
     case BLE_GAP_EVENT_SUBSCRIBE:
+      observeConnection(event->subscribe.conn_handle);
       if (event->subscribe.attr_handle == g_inputHandle) g_inputSubscribed = event->subscribe.cur_notify;
       if (event->subscribe.attr_handle == g_batteryHandle) g_batterySubscribed = event->subscribe.cur_notify;
       ESP_LOGI(kTag, "subscription handle=%u notify=%u", event->subscribe.attr_handle, event->subscribe.cur_notify);
       break;
     case BLE_GAP_EVENT_ENC_CHANGE: {
+      observeConnection(event->enc_change.conn_handle);
       ble_gap_conn_desc desc{};
       if (!event->enc_change.status && !ble_gap_conn_find(event->enc_change.conn_handle, &desc)) g_encrypted = desc.sec_state.encrypted;
       ESP_LOGI(kTag, "encryption status=%d encrypted=%d", event->enc_change.status, g_encrypted.load());
@@ -185,7 +201,14 @@ int gapEvent(ble_gap_event *event, void *) {
         ESP_LOGI(kTag, "link interval=%u latency=%u timeout=%u status=%d", desc.conn_itvl, desc.conn_latency, desc.supervision_timeout, event->conn_update.status);
       break;
     }
-    case BLE_GAP_EVENT_MTU: ESP_LOGI(kTag, "MTU=%u", event->mtu.value); break;
+    case BLE_GAP_EVENT_MTU:
+      observeConnection(event->mtu.conn_handle);
+      ESP_LOGI(kTag, "MTU=%u", event->mtu.value);
+      break;
+    case BLE_GAP_EVENT_DATA_LEN_CHG:
+      ESP_LOGI(kTag, "DLE tx=%u/%uus rx=%u/%uus", event->data_len_chg.max_tx_octets,
+          event->data_len_chg.max_tx_time, event->data_len_chg.max_rx_octets, event->data_len_chg.max_rx_time);
+      break;
     case BLE_GAP_EVENT_ADV_COMPLETE: g_instance->onAdvertisingState(false); startAdvertising(); break;
     default: break;
   }
@@ -194,12 +217,17 @@ int gapEvent(ble_gap_event *event, void *) {
 void onSync() {
   const int rc = ble_hs_util_ensure_addr(0);
   if (rc || ble_hs_id_infer_auto(0, &g_addressType)) { ESP_LOGE(kTag, "address initialization failed"); return; }
+  // Realtek's Windows adapter stalled during SC pairing/large reports with
+  // automatic PHY negotiation. 1M keeps encrypted HID and Wi-Fi coexistent.
+  const int phy = ble_gap_set_prefered_default_le_phy(BLE_GAP_LE_PHY_1M_MASK, BLE_GAP_LE_PHY_1M_MASK);
+  if (phy) ESP_LOGW(kTag, "1M PHY preference failed rc=%d", phy);
   g_synced = true; startAdvertising();
 }
 void onReset(int reason) {
   g_synced = false;
   const auto conn = g_connection.exchange(BLE_HS_CONN_HANDLE_NONE);
   ++g_session;
+  g_inputSubscribed = g_batterySubscribed = g_encrypted = false;
   g_instance->onAdvertisingState(false);
   if (conn != BLE_HS_CONN_HANDLE_NONE) g_instance->onConnectionEvent(false, conn);
   ESP_LOGE(kTag, "host reset reason=%d", reason);
@@ -224,7 +252,8 @@ esp_err_t CodexMicroBle::begin(bool enabled) {
   ble_store_config_init();
   ble_svc_gap_init(); ble_svc_gatt_init();
   ble_svc_gap_device_name_set("Codex Micro");
-  ble_att_set_preferred_mtu(517);
+  ble_svc_gap_device_appearance_set(0x03c0);
+  ble_att_set_preferred_mtu(128);
   defineServices();
   int rc = ble_gatts_count_cfg(services);
   if (!rc) rc = ble_gatts_add_svcs(services);
@@ -269,7 +298,11 @@ void CodexMicroBle::poll() {
     // The controller can reuse a connection ID immediately after reconnect.
     if (report.session == g_session) processOutput(report.data.data(), report.length, report.connectionId);
   }
-  startAdvertising();
+  const TickType_t now = xTaskGetTickCount();
+  if (now - lastAdvertisingCheck_ >= pdMS_TO_TICKS(1000)) {
+    lastAdvertisingCheck_ = now;
+    startAdvertising();
+  }
 }
 void CodexMicroBle::setBattery(uint8_t percentage, bool charging) {
   batteryPercentage_ = percentage > 100 ? 100 : percentage; charging_ = charging;

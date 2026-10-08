@@ -5,7 +5,7 @@
 #include <atomic>
 #include "freertos/task.h"
 
-// One owner task handles BLE, quota, battery and chimes, independently of app screens.
+// One owner task handles BLE, battery and chimes, independently of app screens.
 class BluetoothService {
 public:
     enum class Key : uint8_t { Agent0, Agent1, Agent2, Agent3, Agent4, Agent5, Send, Voice, Mic };

@@ -61,6 +61,7 @@ class CodexMicroBle {
   bool rpcBufferConnectionValid_ = false, hostRpcConnectionValid_ = false;
   uint8_t batteryPercentage_ = 100;
   bool charging_ = false;
+  TickType_t lastAdvertisingCheck_ = 0;
   connection_health::ConnectionSet connections_;
   std::atomic<bool> connectionEventLost_{false}, advertising_{false}, enabled_{false};
 };

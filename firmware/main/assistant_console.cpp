@@ -7,6 +7,7 @@
 #include "assistant_service.hpp"
 #include "system_service.hpp"
 #include "quota_service.hpp"
+#include "bluetooth_service.hpp"
 #include "esp_timer.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_console.h"
@@ -19,6 +20,22 @@ bool ready;
 char line[320];
 size_t used;
 bool overflow;
+int bluetoothCommand(int count, char **arguments) {
+    if (count != 2) { puts("Usage: ble status|pair|on|off"); return 1; }
+    auto &bluetooth = BluetoothService::instance();
+    if (strcmp(arguments[1], "status") == 0) {
+        const auto state = bluetooth.snapshot();
+        printf("ble: ready=%d enabled=%d connected=%d advertising=%d rpc=%d epoch=%lu address=%s\n",
+            state.ready, state.enabled, state.connected, state.advertising, state.codex.hostRpcObserved,
+            static_cast<unsigned long>(state.codex.connectionEpoch), state.address);
+        return 0;
+    }
+    const bool accepted = strcmp(arguments[1], "pair") == 0 ? bluetooth.pairAgain() :
+        strcmp(arguments[1], "on") == 0 ? bluetooth.setEnabled(true) :
+        strcmp(arguments[1], "off") == 0 ? bluetooth.setEnabled(false) : false;
+    printf("ble: command %s\n", accepted ? "accepted" : "rejected");
+    return accepted ? 0 : 1;
+}
 int quotaStatus(int count, char **) {
     if (count != 1) return 1;
     const auto state = QuotaService::instance().snapshot();
@@ -74,6 +91,12 @@ esp_err_t initialize()
         entry.command = "quota";
         entry.help = "Inspect independent HTTP quota state";
         entry.func = quotaStatus;
+        result = esp_console_cmd_register(&entry);
+    }
+    if (result == ESP_OK) {
+        entry.command = "ble";
+        entry.help = "Inspect HID state or restart pairing";
+        entry.func = bluetoothCommand;
         result = esp_console_cmd_register(&entry);
     }
     if (result == ESP_OK) result = esp_console_register_help_command();
